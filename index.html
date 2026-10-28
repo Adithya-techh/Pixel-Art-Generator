@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VOXEL•PIXEL // 3D Procedural Pixel Art Generator (Serverless)</title>
+  <link rel="stylesheet" href="./style.css">
+  
+  <!-- Standalone Local Three.js & Controls (Zero Server Required, 100% Offline Compatible) -->
+  <script src="./lib/three.min.js"></script>
+  <script src="./lib/OrbitControls.js"></script>
+</head>
+<body>
+
+  <!-- WebGL 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- UI Overlay -->
+  <div class="ui-overlay">
+
+    <!-- Top Navigation Bar -->
+    <header class="header-bar interactive">
+      <div class="brand">
+        <div class="brand-icon">❖</div>
+        <div>
+          <div class="brand-title">VOXEL•PIXEL</div>
+          <div class="brand-sub">SERVERLESS 3D GENERATOR</div>
+        </div>
+      </div>
+
+      <!-- Archetype Tabs -->
+      <nav class="archetype-tabs">
+        <button class="archetype-btn active" data-type="spaceship">🚀 Starship</button>
+        <button class="archetype-btn" data-type="creature">👾 Invader</button>
+        <button class="archetype-btn" data-type="mecha">🤖 Mecha</button>
+        <button class="archetype-btn" data-type="weapon">⚔️ Weapon</button>
+        <button class="archetype-btn" data-type="diorama">🏰 Diorama</button>
+        <button class="archetype-btn" data-type="relic">📦 Relic</button>
+      </nav>
+
+      <!-- Action & Seed Navigation -->
+      <div class="header-actions">
+        <div class="seed-bar">
+          <button class="seed-btn" id="btn-prev-seed" title="Previous Seed">◀</button>
+          <input type="text" id="seed-input" value="1337" title="Enter custom seed">
+          <button class="seed-btn" id="btn-next-seed" title="Next Seed">▶</button>
+          <button class="seed-btn" id="btn-copy-seed" title="Copy Seed">📋</button>
+        </div>
+
+        <button class="btn-generate" id="btn-randomize">
+          <span>GENERATE</span>
+          <span class="key-badge">SPACE</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Left Controls Dock -->
+    <aside class="left-dock interactive">
+      <!-- Color Palettes -->
+      <div>
+        <div class="section-label">
+          <span>Color Palette</span>
+        </div>
+        <div class="palette-grid" id="palette-container">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Resolution / Grid Size -->
+      <div>
+        <div class="section-label">Grid Resolution</div>
+        <div class="btn-group">
+          <button class="pill-btn res-btn" data-res="8">8×8 Mini</button>
+          <button class="pill-btn res-btn" data-res="12">12×12</button>
+          <button class="pill-btn res-btn active" data-res="16">16×16 Std</button>
+          <button class="pill-btn res-btn" data-res="22">22×22 Epic</button>
+        </div>
+      </div>
+
+      <!-- Voxel Shape Style -->
+      <div>
+        <div class="section-label">Voxel Style</div>
+        <div class="btn-group">
+          <button class="pill-btn style-btn active" data-style="cube">Solid</button>
+          <button class="pill-btn style-btn" data-style="bevel">Beveled</button>
+          <button class="pill-btn style-btn" data-style="spaced">Spaced</button>
+          <button class="pill-btn style-btn" data-style="sphere">Orbs</button>
+        </div>
+      </div>
+
+      <!-- Explode Deconstruction Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Deconstruct / Explode</span>
+        </div>
+        <input type="range" id="slider-explode" min="0" max="1" step="0.02" value="0">
+      </div>
+
+      <!-- Depth Layer Slicer -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Z-Depth Slicer</span>
+        </div>
+        <input type="range" id="slider-slice" min="0.1" max="1" step="0.02" value="1">
+      </div>
+
+      <!-- Visual FX Toggles -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="toggle-row">
+          <span>Turntable Auto-Spin</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-rotate" checked>
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span>Retro CRT Scanlines</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-crt">
+            <span class="slider-round"></span>
+          </label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom HUD & Actions Bar -->
+    <div class="bottom-bar">
+      <!-- 2D Pixel Mini-Map & Live Stats -->
+      <div class="hud-card interactive">
+        <div class="mini-canvas-wrap">
+          <canvas id="mini-canvas"></canvas>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span class="stat-label">Voxels:</span>
+            <span class="stat-val" id="stat-count">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Bounds:</span>
+            <span class="stat-val" id="stat-dim">0 × 0 × 0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Seed ID:</span>
+            <span class="stat-val" id="stat-seed">1337</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Camera Presets -->
+      <div class="camera-dock interactive">
+        <button class="cam-btn" data-view="iso" title="45° Isometric View">45° ISO</button>
+        <button class="cam-btn" data-view="front" title="Front 2D View">FRONT 2D</button>
+        <button class="cam-btn" data-view="side" title="Side Profile">SIDE</button>
+        <button class="cam-btn" data-view="top" title="Top-down View">TOP</button>
+      </div>
+
+      <!-- Export & Download Suite -->
+      <div class="export-dock interactive">
+        <button class="btn-action" id="btn-export-png" title="Download High-Res 2D Pixel Sprite">
+          <span>📸 2D PNG</span>
+        </button>
+        <button class="btn-action" id="btn-export-obj" title="Download 3D Model with Vertex Colors for Blender/Unity">
+          <span>🧊 3D .OBJ</span>
+        </button>
+        <button class="btn-action" id="btn-export-json" title="Download Voxel Coordinate Matrix">
+          <span>💾 JSON</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast">Copied to clipboard!</div>
+
+  <!-- Generator, Exporter & Application Modules -->
+  <script src="./generator.js"></script>
+  <script src="./exporter.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
