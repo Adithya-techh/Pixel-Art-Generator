@@ -1,84 +1,52 @@
-# VOXEL•PIXEL // 3D Procedural Pixel Art Generator (Serverless)
+# PixelCraft — Image to Pixel Art Converter & Generator
 
-A 100% **serverless, offline-ready Procedural 3D Pixel & Voxel Art Generator** powered by Three.js and WebGL.
-
----
-
-## ⚡ Zero Server Setup (Serverless)
-
-This application requires **no server, no node, no npm, and no command line**.
-
-To use it:
-1. Open the folder: `C:\Develop\Pixel_Art_Generator`
-2. **Double-click `index.html`** in Windows Explorer.
-3. It will open instantly in your default web browser (Chrome, Edge, Firefox, Brave, etc.)!
-
-It can also be deployed to any static hosting service (GitHub Pages, Netlify, Vercel, itch.io) by simply uploading this folder.
+A 100% private, client-side, browser-based **Image to Retro Pixel Art Converter and Procedural Generator** inspired by TenthPrime's PixelCraft.
 
 ---
 
 ## ✨ Features
 
-- **6 Distinct Procedural Archetypes**:
-  - 🚀 **Starships**: Fuselage tapering, swept/delta wings, laser cannons, glowing plasma thrusters with exhaust plumes.
-  - 👾 **Alien Invaders**: Cellular organic silhouettes, multi-tier glowing eyes, mandibles, horns, and tentacles.
-  - 🤖 **Cyber Mechas**: Armored chassis, reactor chest cores, shoulder pauldrons, arm blasters, and visors.
-  - ⚔️ **Fantasy Weapons**: Broadswords with glowing magic runes, battleaxes, and sorcerer staves with floating crystals.
-  - 🏰 **Floating Sky Dioramas**: Procedural floating rock cones, grass surfaces, miniature watchtowers, pine trees, and voxel clouds.
-  - 📦 **Ancient Relics & Chests**: Iron-banded treasure chests with glowing magic locks and trims.
-
-- **8 Curated Color Palettes**:
-  - `Cyberpunk Neon`: High-voltage magenta, electric cyan, and laser violet.
-  - `PICO-8 Classic`: The iconic 16 retro console colors.
-  - `Game Boy (DMG-01)`: 4-shade greenish phosphor LCD nostalgia.
-  - `DawnBringer 32 (DB32)`: Legendary fantasy pixel art palette.
-  - `Magma Forge`: Volcanic obsidian, fiery embers, and molten gold.
-  - `Bioluminescence`: Deep midnight navy with electric seafoam accents.
-  - `Vaporwave Sunset`: Pastel mauve, bubblegum pink, and tropical mint.
-  - `Imperial Solar`: Polished ivory armor, rich gold trims, and cobalt blue glow.
-
-- **3D Real-Time Visuals**:
-  - **High Performance**: Built with `THREE.InstancedMesh` for 60 FPS rendering in single draw calls.
-  - **Dynamic Shading & Shadows**: Real-time directional sun casting soft shadows, ambient bounce lighting, and colorful rim lights.
-  - **Emissive Core Lighting**: Pulsing glowing voxels for eyes, engine exhausts, and magic runes.
-  - **Voxel Shape Customization**: Classic Solid Cubes, Beveled/Chamfered Voxels, Spaced Voxels, or Floating Orbs.
-  - **Deconstruct / Explode Mode**: Smoothly disperses voxels outward from the center.
-  - **Z-Depth Layer Slicer**: Slice through layers to inspect internal cross-sections.
-  - **Retro CRT Scanline Filter**: Optional arcade scanline overlay.
-
-- **Export Suite**:
-  - 📸 **2D Pixel PNG**: Crisp pixel-art projection rendered to an offscreen canvas at high resolution with nearest-neighbor scaling.
-  - 🧊 **3D Wavefront .OBJ**: Export 3D models with vertex colors and automatic internal face culling, ready to drag-and-drop into **Blender**, **Unity**, **Godot**, or **Unreal Engine**.
-  - 💾 **JSON Matrix**: Raw coordinate and hex color matrix for custom games.
-
----
-
-## 🎮 Controls & Shortcuts
-
-| Action | Control / Shortcut |
-| :--- | :--- |
-| **Generate New Art** | `Spacebar` or Click **GENERATE** |
-| **Orbit / Rotate** | Click + Drag Left Mouse |
-| **Pan Camera** | Right Click + Drag |
-| **Zoom** | Mouse Wheel Scroll |
-| **Reset Camera** | `R` Key |
-| **Toggle Auto-Spin** | `T` Key |
-| **Seed Navigation** | Click `◀`, `▶`, or enter seed number directly |
-| **Camera Presets** | Click `45° ISO`, `FRONT 2D`, `SIDE`, or `TOP` |
+- **⚡ 100% In-Browser Privacy**: All image processing runs locally inside your browser using HTML5 Canvas API. No images are uploaded to any server.
+- **🖼️ Universal File Support**: Drag & drop or upload PNG, JPG, WEBP, and GIF files, or paste directly from clipboard (`Ctrl + V`).
+- **🎨 Curated Color Palettes**:
+  - `DawnBringer 16 (DB16)` & `DawnBringer 32 (DB32)`
+  - `Nintendo NES (54 Colors)`
+  - `Game Boy Classic (4 Colors Green)`
+  - `PICO-8 (16 Colors)`
+  - `Cyberpunk Neon`
+  - `Perler Bead Palette`
+  - `Minecraft Building Blocks`
+  - `DMC Thread Floss (Cross Stitch)`
+  - `Original Colors (No Palette Lock)`
+- **✨ Professional Dithering Algorithms**:
+  - `Floyd-Steinberg` (Smooth gradient error diffusion)
+  - `Bayer 4x4` (Classic retro crosshatch ordered dithering)
+  - `Bayer 8x8` (Fine matrix dithering)
+  - `Off / None` (Solid quantized colors)
+- **🎛️ Image Adjustments**:
+  - Pixel Block Size slider (Fine 2px to Chunky 40px)
+  - Brightness, Contrast, and Saturation adjustments
+  - Pixel Grid lines overlay toggle
+  - Hold-to-View original comparison toggle
+  - Zoom controls (🔍−, 🔍+)
+- **✏️ In-Browser Touch-Up Drawing Tools**:
+  - Pencil (draw individual pixels)
+  - Eraser (erase to transparent)
+  - Eyedropper (color picker)
+  - Paint Bucket (flood fill contiguous areas)
+  - Undo / Redo history
+- **💾 Full Export Suite**:
+  - 📸 **Crisp PNG (4x Upscale)**: Nearest-neighbor upscaling prevents blurry pixels.
+  - 📄 **SVG Vector Grid**: Infinite scaling vector graphics.
+  - 🧱 **Minecraft Blueprint (.txt)**: Complete block inventory checklist with stack counts.
+  - 🧵 **Craft Chart / Perler Bead Sheet (.txt)**: Color codes and bead counts for real-world crafts.
+  - 📋 **Copy to Clipboard**: Quick paste into Discord, Photoshop, or Slack.
+- **🎲 Built-in 3D Procedural Voxel Engine**:
+  - Switch tabs to generate 3D spaceships, mechas, swords, and islands, and send them to the 2D converter with 1 click!
 
 ---
 
-## 📂 Folder Contents
+## 🚀 How to Run
 
-```
-C:\Develop\Pixel_Art_Generator\
-├── index.html           # Main application (double-click to open!)
-├── style.css            # Retro-cyberpunk styling and CRT scanlines
-├── app.js               # Standalone Three.js scene, camera, lights, InstancedMesh & loop
-├── generator.js         # Mulberry32 PRNG, VoxelGrid, & procedural generation archetypes
-├── exporter.js          # OBJ 3D model generator & crisp 2D PNG renderer
-├── README.md            # Documentation
-└── lib/
-    ├── three.min.js     # Standalone Three.js library (UMD)
-    └── OrbitControls.js # 3D orbital controls (UMD)
-```
+1. Open `C:\Develop\Pixel_Art_Generator\index.html` directly in your browser (Chrome, Edge, Firefox, Safari).
+2. Or push to your GitHub repository and enable GitHub Pages under **Settings > Pages** to host it online for free.

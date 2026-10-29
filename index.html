@@ -1,20 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VOXEL•PIXEL // 3D Procedural Pixel Art Generator</title>
+  <title>PixelCraft — Image to Pixel Art Converter & Generator</title>
+  <meta name="description" content="Convert photos, pictures, logos, and GIFs into retro 8-bit pixel art, Minecraft block patterns, and craft charts. 100% private in-browser tool.">
   <link rel="stylesheet" href="style.css">
   
-  <!-- Primary: High-speed CDN for GitHub Pages / Web -->
-  <!-- Fallback: Local lib/ for offline local double-click -->
+  <!-- Standalone Three.js for 3D Procedural Mode (CDN with local fallback) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
     if (typeof THREE === 'undefined') {
       document.write('<script src="lib/three.min.js"><\/script>');
     }
   </script>
-  
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script>
     if (typeof THREE === 'undefined' || typeof THREE.OrbitControls === 'undefined') {
@@ -22,177 +21,445 @@
     }
   </script>
 </head>
-<body>
+<body class="min-h-screen flex flex-col justify-between bg-background text-gray-100">
 
-  <!-- WebGL 3D Canvas -->
-  <div id="canvas-container"></div>
-
-  <!-- Diagnostic Loading / Error Banner (Hidden once loaded) -->
-  <div id="loading-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#0a0d14; z-index:9999; color:#f1f5f9; font-family:monospace; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;">
-    <div style="font-size:24px; font-weight:bold; color:#00f0ff; margin-bottom:12px;">❖ VOXEL•PIXEL</div>
-    <div id="loading-status" style="font-size:14px; color:#94a3b8; max-width:500px; line-height:1.6;">Initializing 3D Engine...</div>
-  </div>
-
-  <!-- UI Overlay -->
-  <div class="ui-overlay">
-
-    <!-- Top Navigation Bar -->
-    <header class="header-bar interactive">
-      <div class="brand">
-        <div class="brand-icon">❖</div>
-        <div>
-          <div class="brand-title">VOXEL•PIXEL</div>
-          <div class="brand-sub">PROCEDURAL 3D GENERATOR</div>
+  <!-- ================= TOP STICKY HEADER ================= -->
+  <header class="sticky top-0 z-50 bg-surface/95 backdrop-blur-md border-b-2 border-surfaceLight">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <!-- Brand Logo -->
+      <a href="#" class="flex items-center gap-2.5 font-pixel text-base sm:text-lg font-bold text-gray-100 hover:text-accentMint transition-colors">
+        <div class="w-8 h-8 rounded bg-gradient-to-br from-accentPink via-accentYellow to-accentMint flex items-center justify-center text-background font-bold text-sm shadow-pixel-sm">
+          PX
         </div>
-      </div>
+        <span>PixelCraft</span>
+      </a>
 
-      <!-- Archetype Tabs -->
-      <nav class="archetype-tabs">
-        <button class="archetype-btn active" data-type="spaceship">🚀 Starship</button>
-        <button class="archetype-btn" data-type="creature">👾 Invader</button>
-        <button class="archetype-btn" data-type="mecha">🤖 Mecha</button>
-        <button class="archetype-btn" data-type="weapon">⚔️ Weapon</button>
-        <button class="archetype-btn" data-type="diorama">🏰 Diorama</button>
-        <button class="archetype-btn" data-type="relic">📦 Relic</button>
+      <!-- Mode Switcher Tabs -->
+      <nav class="flex items-center gap-2 font-pixel text-xs">
+        <button id="tab-converter" class="tab-nav-btn active flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors">
+          <span>🖼️ Image Converter</span>
+        </button>
+        <button id="tab-generator" class="tab-nav-btn flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors text-gray-400 hover:text-accentMint">
+          <span>🎲 3D Voxel Generator</span>
+        </button>
       </nav>
 
-      <!-- Action & Seed Navigation -->
-      <div class="header-actions">
-        <div class="seed-bar">
-          <button class="seed-btn" id="btn-prev-seed" title="Previous Seed">◀</button>
-          <input type="text" id="seed-input" value="1337" title="Enter custom seed">
-          <button class="seed-btn" id="btn-next-seed" title="Next Seed">▶</button>
-          <button class="seed-btn" id="btn-copy-seed" title="Copy Seed">📋</button>
-        </div>
-
-        <button class="btn-generate" id="btn-randomize">
-          <span>GENERATE</span>
-          <span class="key-badge">SPACE</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Left Controls Dock -->
-    <aside class="left-dock interactive">
-      <!-- Color Palettes -->
-      <div>
-        <div class="section-label">
-          <span>Color Palette</span>
-        </div>
-        <div class="palette-grid" id="palette-container">
-          <!-- Populated dynamically -->
-        </div>
-      </div>
-
-      <!-- Resolution / Grid Size -->
-      <div>
-        <div class="section-label">Grid Resolution</div>
-        <div class="btn-group">
-          <button class="pill-btn res-btn" data-res="8">8×8 Mini</button>
-          <button class="pill-btn res-btn" data-res="12">12×12</button>
-          <button class="pill-btn res-btn active" data-res="16">16×16 Std</button>
-          <button class="pill-btn res-btn" data-res="22">22×22 Epic</button>
-        </div>
-      </div>
-
-      <!-- Voxel Shape Style -->
-      <div>
-        <div class="section-label">Voxel Style</div>
-        <div class="btn-group">
-          <button class="pill-btn style-btn active" data-style="cube">Solid</button>
-          <button class="pill-btn style-btn" data-style="bevel">Beveled</button>
-          <button class="pill-btn style-btn" data-style="spaced">Spaced</button>
-          <button class="pill-btn style-btn" data-style="sphere">Orbs</button>
-        </div>
-      </div>
-
-      <!-- Explode Deconstruction Slider -->
-      <div class="slider-group">
-        <div class="slider-header">
-          <span>Deconstruct / Explode</span>
-        </div>
-        <input type="range" id="slider-explode" min="0" max="1" step="0.02" value="0">
-      </div>
-
-      <!-- Depth Layer Slicer -->
-      <div class="slider-group">
-        <div class="slider-header">
-          <span>Z-Depth Slicer</span>
-        </div>
-        <input type="range" id="slider-slice" min="0.1" max="1" step="0.02" value="1">
-      </div>
-
-      <!-- Visual FX Toggles -->
-      <div style="display: flex; flex-direction: column; gap: 10px;">
-        <div class="toggle-row">
-          <span>Turntable Auto-Spin</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggle-rotate" checked>
-            <span class="slider-round"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <span>Retro CRT Scanlines</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="toggle-crt">
-            <span class="slider-round"></span>
-          </label>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Bottom HUD & Actions Bar -->
-    <div class="bottom-bar">
-      <!-- 2D Pixel Mini-Map & Live Stats -->
-      <div class="hud-card interactive">
-        <div class="mini-canvas-wrap">
-          <canvas id="mini-canvas"></canvas>
-        </div>
-        <div class="stats-grid">
-          <div class="stat-item">
-            <span class="stat-label">Voxels:</span>
-            <span class="stat-val" id="stat-count">0</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Bounds:</span>
-            <span class="stat-val" id="stat-dim">0 × 0 × 0</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Seed ID:</span>
-            <span class="stat-val" id="stat-seed">1337</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Camera Presets -->
-      <div class="camera-dock interactive">
-        <button class="cam-btn" data-view="iso" title="45° Isometric View">45° ISO</button>
-        <button class="cam-btn" data-view="front" title="Front 2D View">FRONT 2D</button>
-        <button class="cam-btn" data-view="side" title="Side Profile">SIDE</button>
-        <button class="cam-btn" data-view="top" title="Top-down View">TOP</button>
-      </div>
-
-      <!-- Export & Download Suite -->
-      <div class="export-dock interactive">
-        <button class="btn-action" id="btn-export-png" title="Download High-Res 2D Pixel Sprite">
-          <span>📸 2D PNG</span>
-        </button>
-        <button class="btn-action" id="btn-export-obj" title="Download 3D Model with Vertex Colors for Blender/Unity">
-          <span>🧊 3D .OBJ</span>
-        </button>
-        <button class="btn-action" id="btn-export-json" title="Download Voxel Coordinate Matrix">
-          <span>💾 JSON</span>
+      <!-- Right Header Actions -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button id="btn-quick-sample" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 font-pixel text-xs font-bold text-background bg-accentYellow rounded shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] transition-all">
+          <span>🎨 Try Sample</span>
         </button>
       </div>
     </div>
+  </header>
 
-  </div>
+  <main class="flex-1">
+
+    <!-- ================= MODE 1: IMAGE TO PIXEL ART CONVERTER (DEFAULT) ================= -->
+    <div id="view-converter" class="max-w-7xl mx-auto px-4 py-8">
+      
+      <!-- Hero Header -->
+      <div class="text-center max-w-3xl mx-auto mb-8">
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-surfaceLight border border-accentMint/40 rounded-full text-accentMint font-pixel text-[11px] mb-4">
+          <span>⚡ 100% FREE · IN-BROWSER PRIVACY · NO SERVER UPLOADS</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-gray-100 font-pixel">
+          Image to <span class="text-transparent bg-clip-text bg-gradient-to-r from-accentPink via-accentYellow to-accentMint">Pixel Art Converter</span>
+        </h1>
+        <p class="text-gray-400 text-sm sm:text-base leading-relaxed">
+          Turn photos, pictures, logos, and game assets into retro pixel art in seconds. Adjust block sizes, color palettes, and dithering with real-time preview, touch up pixels live, and export PNGs, SVG vector grids, craft PDFs, or Minecraft blueprints.
+        </p>
+      </div>
+
+      <!-- Main Live Interactive Canvas Engine -->
+      <div class="w-full bg-surface border-2 border-surfaceLight rounded-xl shadow-pixel p-3 sm:p-5 md:p-6 my-4 sm:my-6 text-gray-100 max-w-full overflow-hidden">
+        
+        <!-- Workspace Top Toolbar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-surfaceLight pb-4 mb-4 sm:mb-6">
+          <div class="flex items-center gap-2 text-[11px] sm:text-xs font-pixel text-accentMint">
+            <span class="icon-shield">🛡️</span>
+            <span>100% In-Browser Privacy · Instant Live Preview</span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            <!-- Zoom Controls -->
+            <div class="flex items-center bg-surfaceLight border border-gray-700 rounded px-1">
+              <button id="btn-zoom-out" class="p-1 text-gray-300 hover:text-white text-xs" title="Zoom Out">🔍−</button>
+              <span id="zoom-label" class="font-pixel text-[10px] text-gray-400 px-1.5">100%</span>
+              <button id="btn-zoom-in" class="p-1 text-gray-300 hover:text-white text-xs" title="Zoom In">🔍+</button>
+            </div>
+
+            <!-- Grid Lines Toggle -->
+            <button id="btn-toggle-grid" class="px-2.5 py-1.5 rounded border text-[11px] font-pixel transition-colors bg-accentMint/20 border-accentMint text-accentMint">
+              <span>▦ Grid Lines</span>
+            </button>
+
+            <!-- Compare Original Toggle -->
+            <button id="btn-view-original" class="px-2.5 py-1.5 rounded border border-gray-700 text-[11px] font-pixel text-gray-300 hover:text-white transition-colors" title="Hold to view original source image">
+              <span>👁️ View Original</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2-Column Converter Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+          
+          <!-- LEFT COLUMN: Upload & Interactive Canvas Workspace -->
+          <div class="lg:col-span-8 flex flex-col items-center w-full min-w-0">
+            
+            <!-- Upload Drag-Drop Box -->
+            <div class="w-full mb-3 sm:mb-4">
+              <label id="drop-zone" class="flex items-center justify-center gap-2 sm:gap-3 w-full p-3 sm:p-4 border-2 border-dashed border-gray-600 hover:border-accentMint rounded-lg bg-surfaceLight/40 cursor-pointer transition-all">
+                <span class="text-accentMint text-xl">📁</span>
+                <span class="font-pixel text-[11px] sm:text-xs text-gray-200 text-center truncate">
+                  Click or Drag Image Here (PNG, JPG, WEBP, GIF) or Paste (Ctrl+V)
+                </span>
+                <input type="file" id="image-file-input" accept="image/*" class="hidden">
+              </label>
+
+              <!-- Quick Presets Row -->
+              <div class="flex items-center gap-2 mt-2 flex-wrap">
+                <span class="font-pixel text-[10px] text-gray-400">Quick Samples:</span>
+                <button class="sample-btn px-2 py-1 rounded bg-surfaceLight border border-gray-700 text-gray-300 hover:border-accentMint font-pixel text-[10px]" data-sample="cat">🐱 Cat</button>
+                <button class="sample-btn px-2 py-1 rounded bg-surfaceLight border border-gray-700 text-gray-300 hover:border-accentYellow font-pixel text-[10px]" data-sample="mushroom">🍄 Mushroom</button>
+                <button class="sample-btn px-2 py-1 rounded bg-surfaceLight border border-gray-700 text-gray-300 hover:border-accentPink font-pixel text-[10px]" data-sample="sword">⚔️ Sword</button>
+                <button class="sample-btn px-2 py-1 rounded bg-surfaceLight border border-gray-700 text-gray-300 hover:border-accentMint font-pixel text-[10px]" data-sample="sunset">🌅 Sunset</button>
+              </div>
+            </div>
+
+            <!-- Touch-Up Drawing Toolbar -->
+            <div id="drawing-toolbar" class="w-full flex items-center justify-between bg-surfaceLight/80 border border-surfaceLight rounded-t-lg px-3 py-2 text-xs font-pixel mb-0">
+              <div class="flex items-center gap-2">
+                <button id="tool-pencil" class="tool-btn active p-1.5 rounded hover:bg-gray-700" title="Pencil (Draw Pixels)">✏️ Pencil</button>
+                <button id="tool-eraser" class="tool-btn p-1.5 rounded hover:bg-gray-700 text-gray-400" title="Eraser">🧹 Eraser</button>
+                <button id="tool-picker" class="tool-btn p-1.5 rounded hover:bg-gray-700 text-gray-400" title="Eyedropper (Pick Color)">💧 Pick</button>
+                <button id="tool-bucket" class="tool-btn p-1.5 rounded hover:bg-gray-700 text-gray-400" title="Paint Bucket (Flood Fill)">🪣 Fill</button>
+                <input type="color" id="draw-color-picker" value="#00f0ff" class="w-6 h-6 border-0 rounded cursor-pointer bg-transparent">
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button id="btn-undo" class="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="Undo">↩️ Undo</button>
+                <button id="btn-redo" class="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white" title="Redo">↪️ Redo</button>
+              </div>
+            </div>
+
+            <!-- Canvas Viewport -->
+            <div class="relative w-full min-h-[320px] sm:min-h-[440px] rounded-b-xl border-2 border-surfaceLight bg-background flex items-center justify-center overflow-auto p-2 sm:p-4 pixel-canvas-bg max-w-full">
+              <!-- Placeholder when no image is loaded -->
+              <div id="empty-state" class="flex flex-col items-center justify-center p-6 text-center cursor-pointer">
+                <div class="w-12 h-12 text-accentMint mb-3 text-4xl animate-bounce">⬆️</div>
+                <p class="font-pixel text-xs sm:text-sm text-gray-200 mb-1">No Image Loaded</p>
+                <p class="text-[11px] sm:text-xs text-gray-400 max-w-xs">Drop your photo, picture, or logo here, or choose a quick sample above.</p>
+              </div>
+
+              <!-- Main Interactive Pixel Art Canvas -->
+              <canvas id="pixel-display-canvas" class="hidden cursor-crosshair shadow-lg max-w-full"></canvas>
+            </div>
+
+            <!-- Image Info Stats Footer -->
+            <div id="image-stats" class="w-full mt-2 flex items-center justify-between text-[11px] font-pixel text-gray-400 px-1">
+              <span>Grid: <strong id="stat-grid-size" class="text-accentMint">0 × 0 px</strong></span>
+              <span>Total Pixels: <strong id="stat-total-pixels" class="text-accentYellow">0</strong></span>
+            </div>
+
+          </div>
+
+          <!-- RIGHT COLUMN: Pixel Engine Controls -->
+          <div class="lg:col-span-4 flex flex-col justify-between p-4 rounded-xl border bg-surfaceLight/30 border-surfaceLight w-full">
+            <div>
+              <h3 class="font-pixel text-xs font-bold text-accentYellow uppercase tracking-wider mb-3 flex items-center gap-2">
+                <span>✨</span>
+                <span>Pixel Engine Controls</span>
+              </h3>
+
+              <!-- 1. Block Size Slider -->
+              <div class="mb-4 sm:mb-5">
+                <div class="flex justify-between text-xs font-pixel mb-1">
+                  <span>Pixel Block Size:</span>
+                  <span id="label-block-size" class="text-accentMint font-bold">12px</span>
+                </div>
+                <input type="range" id="slider-block-size" min="2" max="40" value="12" class="w-full accent-accentMint cursor-pointer">
+                <div class="flex justify-between text-[10px] text-gray-400 mt-1">
+                  <span>Fine (2px)</span>
+                  <span>Chunky (40px)</span>
+                </div>
+              </div>
+
+              <!-- 2. Color Palette Preset -->
+              <div class="mb-4 sm:mb-5">
+                <label class="block text-xs font-pixel mb-1 text-gray-300">Color Palette Preset:</label>
+                <select id="select-palette" class="w-full border rounded px-3 py-2 text-xs font-pixel cursor-pointer outline-none bg-surface border-gray-700 text-gray-200 focus:border-accentMint">
+                  <option value="db16" selected>Dawnbringer DB16 (16 Colors)</option>
+                  <option value="db32">Dawnbringer DB32 (32 Colors)</option>
+                  <option value="gameboy">Game Boy Classic (4 Colors)</option>
+                  <option value="nes">Nintendo NES (54 Colors)</option>
+                  <option value="pico8">PICO-8 (16 Colors)</option>
+                  <option value="cyberpunk">Cyberpunk Neon (16 Colors)</option>
+                  <option value="perler">Perler Bead Midi Palette</option>
+                  <option value="minecraft">Minecraft Building Blocks</option>
+                  <option value="dmc">DMC Thread Floss (Cross Stitch)</option>
+                  <option value="original">Original Colors (No Palette Lock)</option>
+                </select>
+              </div>
+
+              <!-- 3. Dithering Algorithm -->
+              <div class="mb-4 sm:mb-5">
+                <label class="block text-xs font-pixel mb-1 text-gray-300">Dithering Algorithm:</label>
+                <select id="select-dither" class="w-full border rounded px-3 py-2 text-xs font-pixel cursor-pointer outline-none bg-surface border-gray-700 text-gray-200 focus:border-accentMint">
+                  <option value="floyd-steinberg" selected>Floyd-Steinberg (Smooth)</option>
+                  <option value="bayer-4x4">Bayer 4x4 (Classic Retro Crosshatch)</option>
+                  <option value="bayer-8x8">Bayer 8x8 (Fine Matrix)</option>
+                  <option value="none">Off (Solid Quantized Colors)</option>
+                </select>
+              </div>
+
+              <!-- 4. Advanced Adjustments Accordion -->
+              <div class="mb-5 sm:mb-6 border border-gray-700 rounded-lg p-3 bg-surface">
+                <div class="flex items-center justify-between text-xs font-pixel text-gray-300 mb-2 cursor-pointer" id="toggle-adjustments">
+                  <span>⚙️ Image Adjustments</span>
+                  <span id="adjust-icon">▾</span>
+                </div>
+                <div id="adjustments-panel" class="space-y-3 pt-2 border-t border-gray-800 text-[11px] font-pixel">
+                  <div>
+                    <div class="flex justify-between text-gray-400 mb-1">
+                      <span>Brightness:</span>
+                      <span id="val-brightness">0%</span>
+                    </div>
+                    <input type="range" id="slider-brightness" min="-50" max="50" value="0" class="w-full accent-accentMint">
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-gray-400 mb-1">
+                      <span>Contrast:</span>
+                      <span id="val-contrast">0%</span>
+                    </div>
+                    <input type="range" id="slider-contrast" min="-50" max="50" value="0" class="w-full accent-accentMint">
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-gray-400 mb-1">
+                      <span>Saturation:</span>
+                      <span id="val-saturation">0%</span>
+                    </div>
+                    <input type="range" id="slider-saturation" min="-50" max="50" value="0" class="w-full accent-accentMint">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Export Buttons Suite -->
+            <div class="space-y-2 border-t pt-4 border-gray-700">
+              <!-- Primary 4x PNG Export -->
+              <button id="btn-export-png" class="w-full py-2.5 px-4 font-pixel text-xs font-bold text-background bg-accentMint rounded shadow-pixel hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center justify-center gap-2">
+                <span>💾</span>
+                <span>Download Crisp PNG (4x)</span>
+              </button>
+
+              <!-- Secondary Formats Grid -->
+              <div class="grid grid-cols-3 gap-2">
+                <button id="btn-export-svg" class="py-2 px-2 font-pixel text-[10px] font-semibold border rounded transition-colors bg-surface border-gray-700 hover:border-accentMint text-gray-200 flex items-center justify-center gap-1">
+                  <span>SVG</span>
+                </button>
+                <button id="btn-export-craft" class="py-2 px-2 font-pixel text-[10px] font-semibold border rounded transition-colors bg-surface border-gray-700 hover:border-accentPink text-gray-200 flex items-center justify-center gap-1">
+                  <span>Craft PDF</span>
+                </button>
+                <button id="btn-export-mc" class="py-2 px-2 font-pixel text-[10px] font-semibold border rounded transition-colors bg-surface border-gray-700 hover:border-accentYellow text-gray-200 flex items-center justify-center gap-1">
+                  <span>Minecraft</span>
+                </button>
+              </div>
+
+              <!-- Copy to Clipboard -->
+              <button id="btn-copy-clipboard" class="w-full py-1.5 font-pixel text-[10px] text-gray-400 hover:text-white flex items-center justify-center gap-1">
+                <span>📋 Copy Image to Clipboard</span>
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Step-by-Step Guide Section (From TenthPrime) -->
+      <section class="my-16 p-8 bg-surface border-2 border-surfaceLight rounded-xl shadow-pixel">
+        <h2 class="font-pixel text-xl font-bold text-accentMint mb-6 flex items-center gap-2">
+          <span>📋</span> Step-by-Step: How to Convert Any Image to Pixel Art
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-4">
+          <div class="p-4 bg-surfaceLight/50 rounded-lg border border-gray-800">
+            <div class="w-7 h-7 rounded-full bg-accentMint text-background font-pixel text-xs font-bold flex items-center justify-center mb-3">1</div>
+            <h3 class="font-pixel text-xs font-bold text-gray-100 mb-2">Upload Image</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Select or drop any PNG, JPG, WEBP, or GIF image.</p>
+          </div>
+          <div class="p-4 bg-surfaceLight/50 rounded-lg border border-gray-800">
+            <div class="w-7 h-7 rounded-full bg-accentMint text-background font-pixel text-xs font-bold flex items-center justify-center mb-3">2</div>
+            <h3 class="font-pixel text-xs font-bold text-gray-100 mb-2">Set Block Size</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Adjust pixel size slider for detailed or chunky 8-bit look.</p>
+          </div>
+          <div class="p-4 bg-surfaceLight/50 rounded-lg border border-gray-800">
+            <div class="w-7 h-7 rounded-full bg-accentMint text-background font-pixel text-xs font-bold flex items-center justify-center mb-3">3</div>
+            <h3 class="font-pixel text-xs font-bold text-gray-100 mb-2">Choose Palette</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Lock colors to Game Boy, NES, PICO-8, DB16, Perler, or DMC.</p>
+          </div>
+          <div class="p-4 bg-surfaceLight/50 rounded-lg border border-gray-800">
+            <div class="w-7 h-7 rounded-full bg-accentMint text-background font-pixel text-xs font-bold flex items-center justify-center mb-3">4</div>
+            <h3 class="font-pixel text-xs font-bold text-gray-100 mb-2">Touch Up Live</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Use in-browser drawing pencil & eraser to clean up stray pixels.</p>
+          </div>
+          <div class="p-4 bg-surfaceLight/50 rounded-lg border border-gray-800">
+            <div class="w-7 h-7 rounded-full bg-accentMint text-background font-pixel text-xs font-bold flex items-center justify-center mb-3">5</div>
+            <h3 class="font-pixel text-xs font-bold text-gray-100 mb-2">Download Art</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Export crisp PNG, SVG, craft PDF, or Minecraft schematic.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Popular Micro-Tools Grid Section (From TenthPrime) -->
+      <section class="my-16">
+        <div class="flex items-center justify-between mb-6 border-b border-surfaceLight pb-4">
+          <div>
+            <h2 class="font-pixel text-lg font-bold text-gray-100 flex items-center gap-2">
+              <span class="text-accentYellow">🕹️</span> Popular Specialized Micro-Tools
+            </h2>
+            <p class="text-xs text-gray-400 mt-1">Built-in presets for Minecraft, Perler beads, cross-stitch, and retro consoles.</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="quick-tool-card group p-5 bg-surface border-2 border-surfaceLight hover:border-accentMint rounded-xl shadow-pixel cursor-pointer transition-all" data-preset="photo">
+            <div class="font-pixel text-[10px] text-accentMint mb-1 uppercase tracking-wide">Core Tool</div>
+            <h3 class="font-pixel text-sm font-bold text-gray-100 group-hover:text-accentYellow transition-colors mb-2">Photo to Pixel Art</h3>
+            <p class="text-gray-400 text-xs leading-relaxed">Convert any photo into 8-bit retro pixel art with live preview.</p>
+          </div>
+          <div class="quick-tool-card group p-5 bg-surface border-2 border-surfaceLight hover:border-accentYellow rounded-xl shadow-pixel cursor-pointer transition-all" data-preset="minecraft">
+            <div class="font-pixel text-[10px] text-accentYellow mb-1 uppercase tracking-wide">Gaming Tool</div>
+            <h3 class="font-pixel text-sm font-bold text-gray-100 group-hover:text-accentMint transition-colors mb-2">Minecraft Block Art</h3>
+            <p class="text-gray-400 text-xs leading-relaxed">Convert images into exact Minecraft wool, concrete, and terracotta block counts.</p>
+          </div>
+          <div class="quick-tool-card group p-5 bg-surface border-2 border-surfaceLight hover:border-accentPink rounded-xl shadow-pixel cursor-pointer transition-all" data-preset="perler">
+            <div class="font-pixel text-[10px] text-accentPink mb-1 uppercase tracking-wide">Craft Tool</div>
+            <h3 class="font-pixel text-sm font-bold text-gray-100 group-hover:text-accentMint transition-colors mb-2">Perler Bead Pattern</h3>
+            <p class="text-gray-400 text-xs leading-relaxed">Fuse bead color code mapping with printable checklists.</p>
+          </div>
+          <div class="quick-tool-card group p-5 bg-surface border-2 border-surfaceLight hover:border-accentMint rounded-xl shadow-pixel cursor-pointer transition-all" data-preset="gameboy">
+            <div class="font-pixel text-[10px] text-accentMint mb-1 uppercase tracking-wide">Retro Tool</div>
+            <h3 class="font-pixel text-sm font-bold text-gray-100 group-hover:text-accentYellow transition-colors mb-2">Game Boy 4-Color</h3>
+            <p class="text-gray-400 text-xs leading-relaxed">Authentic 1989 Nintendo Game Boy 4-color phosphor green nostalgia.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ Section (From TenthPrime) -->
+      <section class="my-16 max-w-4xl mx-auto">
+        <h2 class="font-pixel text-xl font-bold text-gray-100 mb-6 text-center text-accentYellow">Frequently Asked Questions</h2>
+        <div class="space-y-4">
+          <div class="p-5 bg-surface border border-surfaceLight rounded-xl">
+            <h3 class="font-pixel text-sm font-bold text-gray-100 mb-2">How do I convert an image to pixel art online for free?</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Upload your image to PixelCraft, select your preferred block size and retro color palette, then click Download PNG Sprite (4x upscale).</p>
+          </div>
+          <div class="p-5 bg-surface border border-surfaceLight rounded-xl">
+            <h3 class="font-pixel text-sm font-bold text-gray-100 mb-2">Is my uploaded image saved on a server?</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">No. PixelCraft processes images 100% inside your web browser using client-side HTML5 Canvas API for complete privacy.</p>
+          </div>
+          <div class="p-5 bg-surface border border-surfaceLight rounded-xl">
+            <h3 class="font-pixel text-sm font-bold text-gray-100 mb-2">Can I export pixel art for Minecraft or Perler beads?</h3>
+            <p class="text-xs text-gray-400 leading-relaxed">Yes! PixelCraft includes specialized exporters for Minecraft block count blueprints (.txt) and printable craft patterns with DMC/Perler color codes.</p>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ================= MODE 2: 3D PROCEDURAL VOXEL GENERATOR ================= -->
+    <div id="view-generator" class="hidden relative w-full h-[calc(100vh-64px)]">
+      <div id="canvas-container" class="w-full h-full"></div>
+
+      <!-- 3D Overlay Controls -->
+      <div class="absolute top-4 left-4 z-10 flex flex-col gap-3 bg-surface/90 backdrop-blur-md p-4 rounded-xl border border-surfaceLight shadow-pixel w-72">
+        <div class="flex items-center justify-between font-pixel text-xs text-accentMint">
+          <span>3D Archetypes</span>
+          <button id="btn-3d-randomize" class="px-2 py-1 bg-accentMint text-background rounded font-bold hover:opacity-90">🎲 Spin [Space]</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px] font-pixel">
+          <button class="v-archetype-btn active p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="spaceship">🚀 Starship</button>
+          <button class="v-archetype-btn p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="creature">👾 Invader</button>
+          <button class="v-archetype-btn p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="mecha">🤖 Mecha</button>
+          <button class="v-archetype-btn p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="weapon">⚔️ Weapon</button>
+          <button class="v-archetype-btn p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="diorama">🏰 Diorama</button>
+          <button class="v-archetype-btn p-1.5 rounded bg-surfaceLight border border-gray-700 hover:border-accentMint" data-type="relic">📦 Relic</button>
+        </div>
+
+        <div class="border-t border-gray-700 pt-3">
+          <div class="flex justify-between text-xs font-pixel mb-1">
+            <span>Deconstruct:</span>
+          </div>
+          <input type="range" id="v-slider-explode" min="0" max="1" step="0.02" value="0" class="w-full accent-accentMint">
+        </div>
+
+        <div class="flex gap-2 border-t border-gray-700 pt-3">
+          <button id="btn-send-to-converter" class="w-full py-1.5 bg-accentYellow text-background font-pixel text-xs font-bold rounded shadow-pixel">
+            🖼️ Send to 2D Converter
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ================= FOOTER (From TenthPrime) ================= -->
+  <footer class="bg-surface border-t-2 border-surfaceLight py-12 mt-20">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8 text-sm">
+        <div>
+          <div class="font-pixel text-base font-bold text-gray-100 mb-3 flex items-center gap-2">
+            <div class="w-6 h-6 rounded bg-accentMint text-background flex items-center justify-center font-bold text-xs">PX</div>
+            PixelCraft Engine
+          </div>
+          <p class="text-gray-400 text-xs leading-relaxed mb-4">
+            100% private, browser-based image to pixel art converter. Turn photos, GIFs, logos, and game assets into crisp 8-bit retro pixel art, craft PDF patterns, and Minecraft block schematics.
+          </p>
+        </div>
+        <div>
+          <h3 class="font-pixel text-xs font-bold text-accentYellow uppercase tracking-wider mb-3">Popular Converters</h3>
+          <ul class="space-y-2 text-xs text-gray-300">
+            <li>Photo to Pixel Art Converter</li>
+            <li>Minecraft Block Pattern Maker</li>
+            <li>Perler & Fuse Bead Pattern Maker</li>
+            <li>Cross Stitch DMC Pattern Maker</li>
+            <li>8-Bit Retro Arcade Image Converter</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-pixel text-xs font-bold text-accentPink uppercase tracking-wider mb-3">Game Dev Tools</h3>
+          <ul class="space-y-2 text-xs text-gray-300">
+            <li>Game Boy 4-Color Palette Pixelizer</li>
+            <li>Animated GIF to Pixel Converter</li>
+            <li>Transparent Sprite Asset Converter</li>
+            <li>NES 54-Color Palette Lock</li>
+            <li>PICO-8 16-Color Palette Generator</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-pixel text-xs font-bold text-accentMint uppercase tracking-wider mb-3">Features & Compliance</h3>
+          <ul class="space-y-2 text-xs text-gray-400">
+            <li>🔒 100% Private (No server uploads)</li>
+            <li>⚡ 60 FPS Real-Time Canvas Preview</li>
+            <li>📄 Printable PDF & .schematic Exports</li>
+            <li>⚖️ Zero-Server, 100% Client-Side</li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-surfaceLight pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500">
+        <p>© 2026 PixelCraft Engine. Built for Artists, Game Devs & Crafters.</p>
+        <p class="mt-2 sm:mt-0 font-pixel">Crafted with HTML5 Canvas & Three.js</p>
+      </div>
+    </div>
+  </footer>
 
   <!-- Toast Notification -->
-  <div class="toast" id="toast">Copied to clipboard!</div>
+  <div id="toast" class="toast">Copied to clipboard!</div>
 
-  <!-- Generator, Exporter & Application Modules -->
+  <!-- Scripts -->
+  <script src="converter.js"></script>
+  <script src="samples.js"></script>
   <script src="generator.js"></script>
   <script src="exporter.js"></script>
   <script src="app.js"></script>

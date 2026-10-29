@@ -1,588 +1,590 @@
 /**
- * Main Application for Procedural 3D Pixel Art Generator
- * Resilient Serverless / GitHub Pages / Offline Edition
+ * PixelCraft — Main Application Coordinator
+ * Powers both the Image to Pixel Art Converter and the 3D Voxel Generator
  */
 
 (function () {
-  function showError(msg) {
-    const overlay = document.getElementById('loading-overlay');
-    const status = document.getElementById('loading-status');
-    if (overlay && status) {
-      overlay.style.display = 'flex';
-      status.innerHTML = `<span style="color:#ff0055; font-weight:bold;">⚠️ Error:</span> ${msg}<br><br><span style="color:#00f0ff;">Tip:</span> If you uploaded to GitHub, make sure the <code>lib/</code> folder or CDN links are accessible.`;
-    }
-    console.error('[VOXEL•PIXEL Error]', msg);
-  }
-
-  function hideLoading() {
-    const overlay = document.getElementById('loading-overlay');
-    if (overlay) {
-      overlay.style.display = 'none';
-    }
-  }
-
-  class VoxelApp {
-    constructor() {
-      const THREE = window.THREE;
-      if (!THREE) {
-        showError('Three.js is not loaded.');
-        return;
-      }
-      if (!THREE.OrbitControls) {
-        showError('THREE.OrbitControls is not loaded.');
-        return;
-      }
-      if (!window.VoxelGenerator) {
-        showError('generator.js is not loaded.');
-        return;
-      }
-
-      this.THREE = THREE;
-      this.OrbitControls = THREE.OrbitControls;
-      this.VoxelGenerator = window.VoxelGenerator;
-      this.PALETTES = window.PALETTES;
-      this.VoxelExporter = window.VoxelExporter;
-
-      this.container = document.getElementById('canvas-container');
-      this.generator = new this.VoxelGenerator({
-        seed: Math.floor(Math.random() * 900000) + 100000,
-        palette: 'cyberpunk',
-        resolution: 16
-      });
-
-      this.currentArchetype = 'spaceship';
-      this.currentData = null;
-      this.voxelStyle = 'cube';
-      this.explodeFactor = 0;
-      this.sliceZFactor = 1.0;
-      this.autoRotate = true;
-      this.hoverBobbing = true;
-      this.clock = new this.THREE.Clock();
-
-      this.spawnProgress = 1.0;
-      this.isSpawning = false;
-
-      this.initThree();
-      this.setupLighting();
-      this.setupGround();
-      this.setupUI();
-      this.setupKeyboard();
-
-      this.generate();
-      this.animate();
-
-      hideLoading();
-
-      window.addEventListener('resize', () => this.onResize());
-    }
-
-    initThree() {
-      const THREE = this.THREE;
-      this.scene = new THREE.Scene();
-      this.scene.background = new THREE.Color('#0a0d14');
-      this.scene.fog = new THREE.FogExp2('#0a0d14', 0.02);
-
-      const aspect = this.container.clientWidth / this.container.clientHeight;
-      this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
-      this.camera.position.set(22, 16, 26);
-
-      this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-      this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.15;
-      this.container.appendChild(this.renderer.domElement);
-
-      this.controls = new this.OrbitControls(this.camera, this.renderer.domElement);
-      this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.05;
-      this.controls.maxPolarAngle = Math.PI / 2 + 0.05;
-      this.controls.minDistance = 6;
-      this.controls.maxDistance = 80;
-      this.controls.target.set(0, 4, 0);
-
-      this.modelGroup = new THREE.Group();
-      this.scene.add(this.modelGroup);
-    }
-
-    setupLighting() {
-      const THREE = this.THREE;
-      const ambient = new THREE.AmbientLight('#ffffff', 0.85);
-      this.scene.add(ambient);
-
-      this.dirLight = new THREE.DirectionalLight('#ffffff', 1.8);
-      this.dirLight.position.set(18, 30, 22);
-      this.dirLight.castShadow = true;
-      this.dirLight.shadow.mapSize.width = 2048;
-      this.dirLight.shadow.mapSize.height = 2048;
-      this.dirLight.shadow.camera.near = 0.5;
-      this.dirLight.shadow.camera.far = 70;
-      const d = 20;
-      this.dirLight.shadow.camera.left = -d;
-      this.dirLight.shadow.camera.right = d;
-      this.dirLight.shadow.camera.top = d;
-      this.dirLight.shadow.camera.bottom = -d;
-      this.dirLight.shadow.bias = -0.0005;
-      this.scene.add(this.dirLight);
-
-      this.rimLight1 = new THREE.PointLight('#00f0ff', 1.5, 50);
-      this.rimLight1.position.set(-18, 12, -18);
-      this.scene.add(this.rimLight1);
-
-      this.rimLight2 = new THREE.PointLight('#ff007f', 1.2, 50);
-      this.rimLight2.position.set(18, 10, -18);
-      this.scene.add(this.rimLight2);
-    }
-
-    setupGround() {
-      const THREE = this.THREE;
-      const gridHelper = new THREE.GridHelper(40, 40, '#22d3ee', '#1e293b');
-      gridHelper.position.y = -0.01;
-      this.scene.add(gridHelper);
-
-      const planeGeo = new THREE.PlaneGeometry(80, 80);
-      const planeMat = new THREE.ShadowMaterial({ opacity: 0.35 });
-      const shadowPlane = new THREE.Mesh(planeGeo, planeMat);
-      shadowPlane.rotation.x = -Math.PI / 2;
-      shadowPlane.receiveShadow = true;
-      this.scene.add(shadowPlane);
-    }
-
-    rebuildMeshes() {
-      const THREE = this.THREE;
-      while (this.modelGroup.children.length > 0) {
-        const obj = this.modelGroup.children[0];
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-          else obj.material.dispose();
-        }
-        this.modelGroup.remove(obj);
-      }
-
-      if (!this.currentData || !this.currentData.grid) return;
-
-      const grid = this.currentData.grid;
-      const allVoxels = grid.getAll();
-      if (allVoxels.length === 0) return;
-
-      const bounds = grid.getBounds();
-      this.centerX = (bounds.minX + bounds.maxX) / 2;
-      this.centerY = (bounds.minY + bounds.maxY) / 2;
-      this.centerZ = (bounds.minZ + bounds.maxZ) / 2;
-
-      const maxZAllowed = bounds.minZ + (bounds.maxZ - bounds.minZ) * this.sliceZFactor;
-      const filteredVoxels = allVoxels.filter(v => v.z <= maxZAllowed);
-
-      const solidList = [];
-      const glowList = [];
-
-      for (const v of filteredVoxels) {
-        if (v.isGlow) glowList.push(v);
-        else solidList.push(v);
-      }
-
-      let geo;
-      const s = this.voxelStyle === 'spaced' ? 0.82 : (this.voxelStyle === 'bevel' ? 0.94 : 0.98);
-
-      if (this.voxelStyle === 'sphere') {
-        geo = new THREE.SphereGeometry(s * 0.5, 10, 10);
-      } else {
-        geo = new THREE.BoxGeometry(s, s, s);
-      }
-
-      // Solid Voxels
-      if (solidList.length > 0) {
-        const solidMat = new THREE.MeshStandardMaterial({
-          roughness: 0.35,
-          metalness: 0.15,
-          vertexColors: false
-        });
-
-        this.solidMesh = new THREE.InstancedMesh(geo, solidMat, solidList.length);
-        this.solidMesh.castShadow = true;
-        this.solidMesh.receiveShadow = true;
-
-        const dummy = new THREE.Object3D();
-        const color = new THREE.Color();
-
-        for (let i = 0; i < solidList.length; i++) {
-          const v = solidList[i];
-          let vx = v.x - this.centerX;
-          let vy = v.y - bounds.minY + 0.5;
-          let vz = v.z - this.centerZ;
-
-          if (this.explodeFactor > 0) {
-            const dir = new THREE.Vector3(vx, vy - (bounds.maxY - bounds.minY) * 0.5, vz).normalize();
-            vx += dir.x * this.explodeFactor * 8;
-            vy += dir.y * this.explodeFactor * 8;
-            vz += dir.z * this.explodeFactor * 8;
-          }
-
-          dummy.position.set(vx, vy, vz);
-          dummy.scale.set(this.spawnProgress, this.spawnProgress, this.spawnProgress);
-          dummy.updateMatrix();
-
-          this.solidMesh.setMatrixAt(i, dummy.matrix);
-          color.set(v.color);
-          this.solidMesh.setColorAt(i, color);
-        }
-
-        this.solidMesh.instanceMatrix.needsUpdate = true;
-        if (this.solidMesh.instanceColor) this.solidMesh.instanceColor.needsUpdate = true;
-        this.modelGroup.add(this.solidMesh);
-      }
-
-      // Glow Voxels
-      if (glowList.length > 0) {
-        this.glowMat = new THREE.MeshStandardMaterial({
-          roughness: 0.2,
-          metalness: 0.1,
-          emissive: new THREE.Color(this.generator.palette.glow[0]),
-          emissiveIntensity: 2.2
-        });
-
-        this.glowMesh = new THREE.InstancedMesh(geo, this.glowMat, glowList.length);
-        this.glowMesh.castShadow = true;
-
-        const dummy = new THREE.Object3D();
-        const color = new THREE.Color();
-
-        for (let i = 0; i < glowList.length; i++) {
-          const v = glowList[i];
-          let vx = v.x - this.centerX;
-          let vy = v.y - bounds.minY + 0.5;
-          let vz = v.z - this.centerZ;
-
-          if (this.explodeFactor > 0) {
-            const dir = new THREE.Vector3(vx, vy - (bounds.maxY - bounds.minY) * 0.5, vz).normalize();
-            vx += dir.x * this.explodeFactor * 8;
-            vy += dir.y * this.explodeFactor * 8;
-            vz += dir.z * this.explodeFactor * 8;
-          }
-
-          dummy.position.set(vx, vy, vz);
-          dummy.scale.set(this.spawnProgress, this.spawnProgress, this.spawnProgress);
-          dummy.updateMatrix();
-
-          this.glowMesh.setMatrixAt(i, dummy.matrix);
-          color.set(v.glowColor || v.color);
-          this.glowMesh.setColorAt(i, color);
-        }
-
-        this.glowMesh.instanceMatrix.needsUpdate = true;
-        if (this.glowMesh.instanceColor) this.glowMesh.instanceColor.needsUpdate = true;
-        this.modelGroup.add(this.glowMesh);
-      }
-
-      const height = bounds.maxY - bounds.minY;
-      this.controls.target.set(0, height * 0.45, 0);
-
-      this.update2DMiniMap();
-      this.updateHUDStats();
-    }
-
-    update2DMiniMap() {
-      const canvas = document.getElementById('mini-canvas');
-      if (!canvas || !this.currentData) return;
-
-      const grid = this.currentData.grid;
-      const bounds = grid.getBounds();
-      const w = bounds.maxX - bounds.minX + 3;
-      const h = bounds.maxY - bounds.minY + 3;
-
-      canvas.width = 120;
-      canvas.height = 120;
-      const ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const scale = Math.floor(Math.min(canvas.width / w, canvas.height / h));
-      const offsetX = Math.floor((canvas.width - w * scale) / 2);
-      const offsetY = Math.floor((canvas.height - h * scale) / 2);
-
-      const voxels = grid.getAll().sort((a, b) => b.z - a.z);
-      for (const v of voxels) {
-        const px = offsetX + (v.x - bounds.minX + 1) * scale;
-        const py = offsetY + (bounds.maxY - v.y + 1) * scale;
-        ctx.fillStyle = v.color;
-        ctx.fillRect(px, py, scale, scale);
-      }
-    }
-
-    updateHUDStats() {
-      const bounds = this.currentData.bounds;
-      const voxelCount = this.currentData.grid.count();
-      const w = (bounds.maxX - bounds.minX + 1);
-      const h = (bounds.maxY - bounds.minY + 1);
-      const d = (bounds.maxZ - bounds.minZ + 1);
-
-      document.getElementById('stat-count').textContent = voxelCount.toLocaleString();
-      document.getElementById('stat-dim').textContent = `${w} × ${h} × ${d}`;
-      document.getElementById('stat-seed').textContent = this.generator.seed;
-      document.getElementById('seed-input').value = this.generator.seed;
-    }
-
-    generate(seed = null) {
-      if (seed !== null) {
-        this.generator.setSeed(seed);
-      }
-      this.currentData = this.generator.generate(this.currentArchetype);
-
-      this.spawnProgress = 0.05;
-      this.isSpawning = true;
-
-      this.rebuildMeshes();
-    }
-
-    setArchetype(archetype) {
-      this.currentArchetype = archetype;
-      this.generate();
-    }
-
-    setPalette(paletteId) {
-      this.generator.setPalette(paletteId);
-      this.generate(this.generator.seed);
-    }
-
-    setVoxelStyle(style) {
-      this.voxelStyle = style;
-      this.rebuildMeshes();
-    }
-
-    setExplode(val) {
-      this.explodeFactor = parseFloat(val);
-      this.rebuildMeshes();
-    }
-
-    setSlice(val) {
-      this.sliceZFactor = parseFloat(val);
-      this.rebuildMeshes();
-    }
-
-    setCameraView(view) {
-      const dist = 32;
-      const targetY = this.controls.target.y;
-
-      if (view === 'iso') {
-        this.camera.position.set(dist * 0.7, dist * 0.6, dist * 0.7);
-      } else if (view === 'front') {
-        this.camera.position.set(0, targetY, dist);
-      } else if (view === 'top') {
-        this.camera.position.set(0, dist * 1.2, 0.01);
-      } else if (view === 'side') {
-        this.camera.position.set(dist, targetY, 0);
-      }
-
-      this.camera.lookAt(0, targetY, 0);
-      this.controls.update();
-    }
-
-    setupUI() {
-      const tabs = document.querySelectorAll('.archetype-btn');
-      tabs.forEach(btn => {
-        btn.addEventListener('click', () => {
-          tabs.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.setArchetype(btn.dataset.type);
-        });
-      });
-
-      document.getElementById('btn-randomize').addEventListener('click', () => {
-        const nextSeed = Math.floor(Math.random() * 900000) + 100000;
-        this.generate(nextSeed);
-      });
-
-      document.getElementById('btn-prev-seed').addEventListener('click', () => {
-        this.generate(this.generator.seed - 1);
-      });
-      document.getElementById('btn-next-seed').addEventListener('click', () => {
-        this.generate(this.generator.seed + 1);
-      });
-      document.getElementById('seed-input').addEventListener('change', (e) => {
-        const val = parseInt(e.target.value, 10);
-        if (!isNaN(val)) this.generate(val);
-        else this.generate(e.target.value);
-      });
-      document.getElementById('btn-copy-seed').addEventListener('click', () => {
-        navigator.clipboard.writeText(this.generator.seed.toString()).then(() => {
-          this.showToast('Seed copied to clipboard!');
-        });
-      });
-
-      const paletteGrid = document.getElementById('palette-container');
-      for (const [key, p] of Object.entries(this.PALETTES)) {
-        const card = document.createElement('div');
-        card.className = `palette-card ${key === this.generator.palette.id ? 'active' : ''}`;
-        card.dataset.palette = key;
-
-        const swatchRow = document.createElement('div');
-        swatchRow.className = 'swatch-row';
-        p.swatches.slice(0, 6).forEach(c => {
-          const sw = document.createElement('span');
-          sw.style.backgroundColor = c;
-          swatchRow.appendChild(sw);
-        });
-
-        card.innerHTML = `<div class="palette-title">${p.name}</div>`;
-        card.appendChild(swatchRow);
-
-        card.addEventListener('click', () => {
-          document.querySelectorAll('.palette-card').forEach(c => c.classList.remove('active'));
-          card.classList.add('active');
-          this.setPalette(key);
-        });
-
-        paletteGrid.appendChild(card);
-      }
-
-      const resBtns = document.querySelectorAll('.res-btn');
-      resBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          resBtns.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.generator.resolution = parseInt(btn.dataset.res, 10);
-          this.generate(this.generator.seed);
-        });
-      });
-
-      document.querySelectorAll('.style-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.setVoxelStyle(btn.dataset.style);
-        });
-      });
-
-      const explodeSlider = document.getElementById('slider-explode');
-      explodeSlider.addEventListener('input', (e) => this.setExplode(e.target.value));
-
-      const sliceSlider = document.getElementById('slider-slice');
-      sliceSlider.addEventListener('input', (e) => this.setSlice(e.target.value));
-
-      const rotCheck = document.getElementById('toggle-rotate');
-      rotCheck.addEventListener('change', (e) => this.autoRotate = e.target.checked);
-
-      const crtCheck = document.getElementById('toggle-crt');
-      crtCheck.addEventListener('change', (e) => {
-        document.body.classList.toggle('crt-active', e.target.checked);
-      });
-
-      document.querySelectorAll('.cam-btn').forEach(btn => {
-        btn.addEventListener('click', () => this.setCameraView(btn.dataset.view));
-      });
-
-      document.getElementById('btn-export-png').addEventListener('click', () => {
-        const dataUrl = this.VoxelExporter.export2DPNG(this.currentData.grid, 24, null);
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = `${this.currentArchetype}_${this.generator.seed}_2d.png`;
-        a.click();
-        this.showToast('2D Pixel PNG downloaded!');
-      });
-
-      document.getElementById('btn-export-obj').addEventListener('click', () => {
-        const objData = this.VoxelExporter.exportOBJ(this.currentData.grid, `${this.currentArchetype}_${this.generator.seed}`);
-        if (objData) {
-          this.VoxelExporter.downloadFile(objData, `${this.currentArchetype}_${this.generator.seed}.obj`, 'model/obj');
-          this.showToast('3D Wavefront .OBJ file downloaded!');
-        }
-      });
-
-      document.getElementById('btn-export-json').addEventListener('click', () => {
-        const jsonStr = JSON.stringify({
-          archetype: this.currentArchetype,
-          seed: this.generator.seed,
-          palette: this.generator.palette.id,
-          voxels: this.currentData.grid.getAll()
-        }, null, 2);
-        this.VoxelExporter.downloadFile(jsonStr, `${this.currentArchetype}_${this.generator.seed}.json`, 'application/json');
-        this.showToast('Voxel JSON Matrix downloaded!');
-      });
-    }
-
-    setupKeyboard() {
-      window.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'INPUT') return;
-
-        if (e.code === 'Space') {
-          e.preventDefault();
-          const nextSeed = Math.floor(Math.random() * 900000) + 100000;
-          this.generate(nextSeed);
-        } else if (e.key === 'r' || e.key === 'R') {
-          this.setCameraView('iso');
-        } else if (e.key === 't' || e.key === 'T') {
-          this.autoRotate = !this.autoRotate;
-          document.getElementById('toggle-rotate').checked = this.autoRotate;
-        }
-      });
-    }
-
-    showToast(message) {
-      const toast = document.getElementById('toast');
+  // Ensure DOM is ready
+  function initApp() {
+    const engine = new window.PixelEngine();
+    let currentScale = 8;
+    let showGrid = true;
+    let currentTool = 'pencil'; // 'pencil', 'eraser', 'picker', 'bucket'
+    let isDrawing = false;
+    let isOriginalMode = false;
+
+    // Elements
+    const canvas = document.getElementById('pixel-display-canvas');
+    const emptyState = document.getElementById('empty-state');
+    const fileInput = document.getElementById('image-file-input');
+    const dropZone = document.getElementById('drop-zone');
+
+    const sliderBlockSize = document.getElementById('slider-block-size');
+    const labelBlockSize = document.getElementById('label-block-size');
+    const selectPalette = document.getElementById('select-palette');
+    const selectDither = document.getElementById('select-dither');
+
+    const sliderBrightness = document.getElementById('slider-brightness');
+    const sliderContrast = document.getElementById('slider-contrast');
+    const sliderSaturation = document.getElementById('slider-saturation');
+    const valBrightness = document.getElementById('val-brightness');
+    const valContrast = document.getElementById('val-contrast');
+    const valSaturation = document.getElementById('val-saturation');
+
+    const btnZoomIn = document.getElementById('btn-zoom-in');
+    const btnZoomOut = document.getElementById('btn-zoom-out');
+    const zoomLabel = document.getElementById('zoom-label');
+    const btnToggleGrid = document.getElementById('btn-toggle-grid');
+    const btnViewOriginal = document.getElementById('btn-view-original');
+
+    const colorPicker = document.getElementById('draw-color-picker');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+
+    const statGridSize = document.getElementById('stat-grid-size');
+    const statTotalPixels = document.getElementById('stat-total-pixels');
+    const toast = document.getElementById('toast');
+
+    // --- Helper: Show Toast Notification ---
+    function showToast(message) {
       if (!toast) return;
       toast.textContent = message;
       toast.classList.add('visible');
-      setTimeout(() => {
-        toast.classList.remove('visible');
-      }, 2800);
+      setTimeout(() => toast.classList.remove('visible'), 2800);
     }
 
-    onResize() {
-      const w = this.container.clientWidth;
-      const h = this.container.clientHeight;
-      this.camera.aspect = w / h;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(w, h);
+    // --- Helper: Refresh Pixel Output ---
+    function updatePixelArt() {
+      if (!engine.sourceImage) return;
+
+      const blockSize = parseInt(sliderBlockSize.value, 10);
+      const paletteId = selectPalette.value;
+      const dither = selectDither.value;
+      const brightness = parseInt(sliderBrightness.value, 10);
+      const contrast = parseInt(sliderContrast.value, 10);
+      const saturation = parseInt(sliderSaturation.value, 10);
+
+      engine.process({
+        blockSize,
+        paletteId,
+        dither,
+        brightness,
+        contrast,
+        saturation
+      });
+
+      renderDisplay();
     }
 
-    animate() {
-      requestAnimationFrame(() => this.animate());
+    function renderDisplay() {
+      if (!engine.pixelData) return;
 
-      const delta = this.clock.getDelta();
-      const elapsedTime = this.clock.getElapsedTime();
+      if (isOriginalMode && engine.sourceImage) {
+        // Draw original image
+        canvas.width = engine.sourceImage.naturalWidth || engine.sourceImage.width;
+        canvas.height = engine.sourceImage.naturalHeight || engine.sourceImage.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(engine.sourceImage, 0, 0);
+        return;
+      }
 
-      if (this.isSpawning) {
-        this.spawnProgress += delta * 3.5;
-        if (this.spawnProgress >= 1.0) {
-          this.spawnProgress = 1.0;
-          this.isSpawning = false;
+      engine.renderToCanvas(canvas, {
+        scale: currentScale,
+        showGrid: showGrid
+      });
+
+      // Update HUD Stats
+      if (statGridSize) {
+        statGridSize.textContent = `${engine.gridWidth} × ${engine.gridHeight} px`;
+      }
+      if (statTotalPixels) {
+        statTotalPixels.textContent = (engine.gridWidth * engine.gridHeight).toLocaleString();
+      }
+    }
+
+    // --- Load Image File or URL ---
+    function loadImageSource(src) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        engine.loadImage(img);
+        emptyState.classList.add('hidden');
+        canvas.classList.remove('hidden');
+
+        // Choose smart default scale based on image size
+        const maxDim = Math.max(img.width, img.height);
+        if (maxDim > 800) currentScale = 4;
+        else if (maxDim > 400) currentScale = 6;
+        else currentScale = 8;
+        updateZoomLabel();
+
+        updatePixelArt();
+        showToast('Image converted to pixel art!');
+      };
+      img.src = src;
+    }
+
+    function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (e) => loadImageSource(e.target.result);
+      reader.readAsDataURL(file);
+    }
+
+    // --- Event Listeners: File Upload & Drag/Drop ---
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-active');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-active');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-active');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    // Paste image from clipboard (Ctrl+V)
+    window.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          handleFile(file);
+          break;
         }
-        this.rebuildMeshes();
       }
+    });
 
-      if (this.autoRotate) {
-        this.modelGroup.rotation.y += delta * 0.45;
+    // Quick Sample Buttons
+    document.querySelectorAll('.sample-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.sample;
+        if (window.SamplePresets && window.SamplePresets[type]) {
+          const dataUrl = window.SamplePresets[type].getDataUrl();
+          loadImageSource(dataUrl);
+        }
+      });
+    });
+
+    document.getElementById('btn-quick-sample').addEventListener('click', () => {
+      if (window.SamplePresets && window.SamplePresets.cat) {
+        loadImageSource(window.SamplePresets.cat.getDataUrl());
       }
+    });
 
-      if (this.hoverBobbing && !this.isSpawning && this.currentArchetype !== 'diorama') {
-        this.modelGroup.position.y = Math.sin(elapsedTime * 2.2) * 0.4;
-      } else {
-        this.modelGroup.position.y = 0;
-      }
+    // Quick Micro-Tool Cards (Preset switchers)
+    document.querySelectorAll('.quick-tool-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const preset = card.dataset.preset;
+        if (preset === 'gameboy') {
+          selectPalette.value = 'gameboy';
+          selectDither.value = 'bayer-4x4';
+        } else if (preset === 'minecraft') {
+          selectPalette.value = 'minecraft';
+          selectDither.value = 'floyd-steinberg';
+        } else if (preset === 'perler') {
+          selectPalette.value = 'perler';
+          selectDither.value = 'none';
+        } else {
+          selectPalette.value = 'db16';
+          selectDither.value = 'floyd-steinberg';
+        }
+        if (!engine.sourceImage && window.SamplePresets) {
+          loadImageSource(window.SamplePresets.cat.getDataUrl());
+        } else {
+          updatePixelArt();
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
 
-      if (this.glowMat) {
-        this.glowMat.emissiveIntensity = 2.0 + Math.sin(elapsedTime * 4.5) * 0.8;
-      }
+    // --- Control Sliders & Dropdowns ---
+    sliderBlockSize.addEventListener('input', (e) => {
+      labelBlockSize.textContent = `${e.target.value}px`;
+      updatePixelArt();
+    });
 
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+    selectPalette.addEventListener('change', updatePixelArt);
+    selectDither.addEventListener('change', updatePixelArt);
+
+    sliderBrightness.addEventListener('input', (e) => {
+      valBrightness.textContent = `${e.target.value}%`;
+      updatePixelArt();
+    });
+
+    sliderContrast.addEventListener('input', (e) => {
+      valContrast.textContent = `${e.target.value}%`;
+      updatePixelArt();
+    });
+
+    sliderSaturation.addEventListener('input', (e) => {
+      valSaturation.textContent = `${e.target.value}%`;
+      updatePixelArt();
+    });
+
+    // Toggle Image Adjustments Accordion
+    const toggleAdjust = document.getElementById('toggle-adjustments');
+    const adjustPanel = document.getElementById('adjustments-panel');
+    const adjustIcon = document.getElementById('adjust-icon');
+    toggleAdjust.addEventListener('click', () => {
+      adjustPanel.classList.toggle('hidden');
+      adjustIcon.textContent = adjustPanel.classList.contains('hidden') ? '▸' : '▾';
+    });
+
+    // --- Zoom Controls ---
+    function updateZoomLabel() {
+      zoomLabel.textContent = `${Math.round((currentScale / 8) * 100)}%`;
     }
-  }
 
-  function start() {
-    try {
-      window.voxelApp = new VoxelApp();
-    } catch (err) {
-      showError(err.message || String(err));
+    btnZoomIn.addEventListener('click', () => {
+      currentScale = Math.min(24, currentScale + 2);
+      updateZoomLabel();
+      renderDisplay();
+    });
+
+    btnZoomOut.addEventListener('click', () => {
+      currentScale = Math.max(2, currentScale - 2);
+      updateZoomLabel();
+      renderDisplay();
+    });
+
+    btnToggleGrid.addEventListener('click', () => {
+      showGrid = !showGrid;
+      btnToggleGrid.classList.toggle('bg-accentMint/20', showGrid);
+      btnToggleGrid.classList.toggle('border-accentMint', showGrid);
+      btnToggleGrid.classList.toggle('text-accentMint', showGrid);
+      renderDisplay();
+    });
+
+    // View Original Hold/Toggle
+    const startViewOrig = () => { isOriginalMode = true; renderDisplay(); };
+    const endViewOrig = () => { isOriginalMode = false; renderDisplay(); };
+    btnViewOriginal.addEventListener('mousedown', startViewOrig);
+    btnViewOriginal.addEventListener('mouseup', endViewOrig);
+    btnViewOriginal.addEventListener('mouseleave', endViewOrig);
+    btnViewOriginal.addEventListener('touchstart', (e) => { e.preventDefault(); startViewOrig(); });
+    btnViewOriginal.addEventListener('touchend', endViewOrig);
+
+    // --- Interactive Drawing Tools on Canvas ---
+    const toolBtns = {
+      pencil: document.getElementById('tool-pencil'),
+      eraser: document.getElementById('tool-eraser'),
+      picker: document.getElementById('tool-picker'),
+      bucket: document.getElementById('tool-bucket')
+    };
+
+    function setTool(toolName) {
+      currentTool = toolName;
+      Object.keys(toolBtns).forEach(k => toolBtns[k].classList.remove('active', 'text-accentMint', 'bg-accentMint/20'));
+      toolBtns[toolName].classList.add('active', 'text-accentMint', 'bg-accentMint/20');
+    }
+
+    toolBtns.pencil.addEventListener('click', () => setTool('pencil'));
+    toolBtns.eraser.addEventListener('click', () => setTool('eraser'));
+    toolBtns.picker.addEventListener('click', () => setTool('picker'));
+    toolBtns.bucket.addEventListener('click', () => setTool('bucket'));
+
+    function getGridCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+      const canvasX = (clientX - rect.left) * scaleX;
+      const canvasY = (clientY - rect.top) * scaleY;
+
+      return {
+        x: Math.floor(canvasX / currentScale),
+        y: Math.floor(canvasY / currentScale)
+      };
+    }
+
+    function applyDrawingTool(e) {
+      if (!engine.pixelData) return;
+      const { x, y } = getGridCoords(e);
+      const activeColor = colorPicker.value;
+
+      if (currentTool === 'pencil') {
+        engine.setPixel(x, y, activeColor);
+        renderDisplay();
+      } else if (currentTool === 'eraser') {
+        engine.setPixel(x, y, null);
+        renderDisplay();
+      } else if (currentTool === 'picker') {
+        const hex = engine.getPixel(x, y);
+        if (hex) colorPicker.value = hex;
+        setTool('pencil');
+      } else if (currentTool === 'bucket') {
+        engine.floodFill(x, y, activeColor);
+        renderDisplay();
+      }
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      applyDrawingTool(e);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDrawing && (currentTool === 'pencil' || currentTool === 'eraser')) {
+        applyDrawingTool(e);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDrawing) {
+        isDrawing = false;
+        engine._saveHistory();
+      }
+    });
+
+    btnUndo.addEventListener('click', () => {
+      if (engine.undo()) {
+        renderDisplay();
+        showToast('Undo');
+      }
+    });
+
+    btnRedo.addEventListener('click', () => {
+      if (engine.redo()) {
+        renderDisplay();
+        showToast('Redo');
+      }
+    });
+
+    // --- Export Actions ---
+    function triggerDownload(content, filename, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('btn-export-png').addEventListener('click', () => {
+      const dataUrl = engine.exportPNG(4);
+      if (!dataUrl) return;
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'pixelcraft_art_4x.png';
+      a.click();
+      showToast('Downloaded 4x Crisp PNG!');
+    });
+
+    document.getElementById('btn-export-svg').addEventListener('click', () => {
+      const svg = engine.exportSVG();
+      if (!svg) return;
+      triggerDownload(svg, 'pixelcraft_vector.svg', 'image/svg+xml');
+      showToast('Downloaded SVG Vector!');
+    });
+
+    document.getElementById('btn-export-mc').addEventListener('click', () => {
+      const mc = engine.exportMinecraftBlueprint();
+      if (!mc) return;
+      triggerDownload(mc, 'minecraft_pixelart_blueprint.txt', 'text/plain');
+      showToast('Downloaded Minecraft Blueprint!');
+    });
+
+    document.getElementById('btn-export-craft').addEventListener('click', () => {
+      const chart = engine.exportCraftChart();
+      if (!chart) return;
+      triggerDownload(chart, 'pixelcraft_bead_thread_chart.txt', 'text/plain');
+      showToast('Downloaded Craft Pattern Chart!');
+    });
+
+    document.getElementById('btn-copy-clipboard').addEventListener('click', async () => {
+      const dataUrl = engine.exportPNG(2);
+      if (!dataUrl) return;
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showToast('Copied pixel art to clipboard!');
+      } catch (err) {
+        showToast('Clipboard copy not supported by browser.');
+      }
+    });
+
+    // --- Mode Switcher (Converter vs 3D Voxel Generator) ---
+    const tabConverter = document.getElementById('tab-converter');
+    const tabGenerator = document.getElementById('tab-generator');
+    const viewConverter = document.getElementById('view-converter');
+    const viewGenerator = document.getElementById('view-generator');
+    let voxelApp3D = null;
+
+    tabConverter.addEventListener('click', () => {
+      tabConverter.classList.add('active');
+      tabConverter.classList.remove('text-gray-400');
+      tabGenerator.classList.remove('active');
+      tabGenerator.classList.add('text-gray-400');
+      viewConverter.classList.remove('hidden');
+      viewGenerator.classList.add('hidden');
+    });
+
+    tabGenerator.addEventListener('click', () => {
+      tabGenerator.classList.add('active');
+      tabGenerator.classList.remove('text-gray-400');
+      tabConverter.classList.remove('active');
+      tabConverter.classList.add('text-gray-400');
+      viewGenerator.classList.remove('hidden');
+      viewConverter.classList.add('hidden');
+
+      // Initialize 3D engine if not already running
+      if (!voxelApp3D && window.THREE && window.VoxelGenerator) {
+        init3DGenerator();
+      }
+    });
+
+    // 3D Voxel Generator Logic
+    function init3DGenerator() {
+      const container3D = document.getElementById('canvas-container');
+      const vGenerator = new window.VoxelGenerator({ seed: 1337, palette: 'cyberpunk', resolution: 16 });
+      let current3DArchetype = 'spaceship';
+      let explodeFactor = 0;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#0b0f19');
+      const camera = new THREE.PerspectiveCamera(45, container3D.clientWidth / container3D.clientHeight, 0.1, 1000);
+      camera.position.set(22, 16, 26);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setSize(container3D.clientWidth, container3D.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      container3D.appendChild(renderer.domElement);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 4, 0);
+
+      const ambient = new THREE.AmbientLight('#ffffff', 0.85);
+      scene.add(ambient);
+      const sun = new THREE.DirectionalLight('#ffffff', 1.8);
+      sun.position.set(18, 30, 22);
+      sun.castShadow = true;
+      scene.add(sun);
+
+      const gridHelper = new THREE.GridHelper(40, 40, '#10b981', '#1f2937');
+      scene.add(gridHelper);
+
+      const modelGroup = new THREE.Group();
+      scene.add(modelGroup);
+
+      function rebuild3D() {
+        while (modelGroup.children.length > 0) {
+          const obj = modelGroup.children[0];
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) obj.material.dispose();
+          modelGroup.remove(obj);
+        }
+
+        const data = vGenerator.generate(current3DArchetype);
+        const voxels = data.grid.getAll();
+        const bounds = data.bounds;
+        const cx = (bounds.minX + bounds.maxX) / 2;
+        const cy = (bounds.minY + bounds.maxY) / 2;
+        const cz = (bounds.minZ + bounds.maxZ) / 2;
+
+        const geo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+        const mat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.15 });
+        const mesh = new THREE.InstancedMesh(geo, mat, voxels.length);
+        mesh.castShadow = true;
+
+        const dummy = new THREE.Object3D();
+        const color = new THREE.Color();
+
+        for (let i = 0; i < voxels.length; i++) {
+          const v = voxels[i];
+          let vx = v.x - cx;
+          let vy = v.y - bounds.minY + 0.5;
+          let vz = v.z - cz;
+
+          if (explodeFactor > 0) {
+            const dir = new THREE.Vector3(vx, vy, vz).normalize();
+            vx += dir.x * explodeFactor * 8;
+            vy += dir.y * explodeFactor * 8;
+            vz += dir.z * explodeFactor * 8;
+          }
+
+          dummy.position.set(vx, vy, vz);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+          color.set(v.color);
+          mesh.setColorAt(i, color);
+        }
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        modelGroup.add(mesh);
+      }
+
+      function spinRandom() {
+        vGenerator.setSeed(Math.floor(Math.random() * 900000) + 100000);
+        rebuild3D();
+      }
+
+      document.getElementById('btn-3d-randomize').addEventListener('click', spinRandom);
+      document.querySelectorAll('.v-archetype-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.v-archetype-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          current3DArchetype = btn.dataset.type;
+          rebuild3D();
+        });
+      });
+
+      document.getElementById('v-slider-explode').addEventListener('input', (e) => {
+        explodeFactor = parseFloat(e.target.value);
+        rebuild3D();
+      });
+
+      // Send 3D snapshot to 2D Converter
+      document.getElementById('btn-send-to-converter').addEventListener('click', () => {
+        renderer.render(scene, camera);
+        const snapshotUrl = renderer.domElement.toDataURL('image/png');
+        tabConverter.click();
+        loadImageSource(snapshotUrl);
+        showToast('3D Model sent to 2D Pixel Converter!');
+      });
+
+      function animate3D() {
+        requestAnimationFrame(animate3D);
+        modelGroup.rotation.y += 0.005;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      rebuild3D();
+      animate3D();
+      voxelApp3D = true;
+    }
+
+    // Auto-load sample cat on initial open so page is vibrant immediately
+    if (window.SamplePresets && window.SamplePresets.cat) {
+      loadImageSource(window.SamplePresets.cat.getDataUrl());
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
+    document.addEventListener('DOMContentLoaded', initApp);
   } else {
-    start();
+    initApp();
   }
 })();
