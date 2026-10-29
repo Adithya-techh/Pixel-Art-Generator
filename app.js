@@ -4,12 +4,16 @@
  */
 
 (function () {
-  // Ensure DOM is ready
   function initApp() {
+    if (!window.PixelEngine) {
+      console.error('PixelEngine not found! Please check that converter.js is loaded.');
+      return;
+    }
+
     const engine = new window.PixelEngine();
     let currentScale = 8;
     let showGrid = true;
-    let currentTool = 'pencil'; // 'pencil', 'eraser', 'picker', 'bucket'
+    let currentTool = 'pencil';
     let isDrawing = false;
     let isOriginalMode = false;
 
@@ -45,7 +49,6 @@
     const statTotalPixels = document.getElementById('stat-total-pixels');
     const toast = document.getElementById('toast');
 
-    // --- Helper: Show Toast Notification ---
     function showToast(message) {
       if (!toast) return;
       toast.textContent = message;
@@ -53,7 +56,6 @@
       setTimeout(() => toast.classList.remove('visible'), 2800);
     }
 
-    // --- Helper: Refresh Pixel Output ---
     function updatePixelArt() {
       if (!engine.sourceImage) return;
 
@@ -80,7 +82,6 @@
       if (!engine.pixelData) return;
 
       if (isOriginalMode && engine.sourceImage) {
-        // Draw original image
         canvas.width = engine.sourceImage.naturalWidth || engine.sourceImage.width;
         canvas.height = engine.sourceImage.naturalHeight || engine.sourceImage.height;
         const ctx = canvas.getContext('2d');
@@ -93,7 +94,6 @@
         showGrid: showGrid
       });
 
-      // Update HUD Stats
       if (statGridSize) {
         statGridSize.textContent = `${engine.gridWidth} × ${engine.gridHeight} px`;
       }
@@ -102,16 +102,18 @@
       }
     }
 
-    // --- Load Image File or URL ---
+    // --- Load Image File or URL (Fixed CORS handling for data: and blob: URIs) ---
     function loadImageSource(src) {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // CRITICAL: NEVER set crossOrigin on data: or blob: URIs! Modern browsers block them as CORS violations!
+      if (!src.startsWith('data:') && !src.startsWith('blob:') && !src.startsWith('file:')) {
+        img.crossOrigin = 'anonymous';
+      }
       img.onload = () => {
         engine.loadImage(img);
-        emptyState.classList.add('hidden');
-        canvas.classList.remove('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
+        if (canvas) canvas.classList.remove('hidden');
 
-        // Choose smart default scale based on image size
         const maxDim = Math.max(img.width, img.height);
         if (maxDim > 800) currentScale = 4;
         else if (maxDim > 400) currentScale = 6;
@@ -120,6 +122,10 @@
 
         updatePixelArt();
         showToast('Image converted to pixel art!');
+      };
+      img.onerror = (err) => {
+        console.error('Failed to load image:', err);
+        showToast('Failed to load image');
       };
       img.src = src;
     }
@@ -131,7 +137,11 @@
       reader.readAsDataURL(file);
     }
 
-    // --- Event Listeners: File Upload & Drag/Drop ---
+    // Event Listeners: File Upload, Empty State Click & Drag/Drop
+    if (emptyState) {
+      emptyState.addEventListener('click', () => fileInput.click());
+    }
+
     fileInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) {
         handleFile(e.target.files[0]);
@@ -155,7 +165,6 @@
       }
     });
 
-    // Paste image from clipboard (Ctrl+V)
     window.addEventListener('paste', (e) => {
       const items = e.clipboardData && e.clipboardData.items;
       if (!items) return;
@@ -179,11 +188,14 @@
       });
     });
 
-    document.getElementById('btn-quick-sample').addEventListener('click', () => {
-      if (window.SamplePresets && window.SamplePresets.cat) {
-        loadImageSource(window.SamplePresets.cat.getDataUrl());
-      }
-    });
+    const quickSampleBtn = document.getElementById('btn-quick-sample');
+    if (quickSampleBtn) {
+      quickSampleBtn.addEventListener('click', () => {
+        if (window.SamplePresets && window.SamplePresets.cat) {
+          loadImageSource(window.SamplePresets.cat.getDataUrl());
+        }
+      });
+    }
 
     // Quick Micro-Tool Cards (Preset switchers)
     document.querySelectorAll('.quick-tool-card').forEach(card => {
@@ -211,7 +223,7 @@
       });
     });
 
-    // --- Control Sliders & Dropdowns ---
+    // Control Sliders & Dropdowns
     sliderBlockSize.addEventListener('input', (e) => {
       labelBlockSize.textContent = `${e.target.value}px`;
       updatePixelArt();
@@ -235,50 +247,63 @@
       updatePixelArt();
     });
 
-    // Toggle Image Adjustments Accordion
     const toggleAdjust = document.getElementById('toggle-adjustments');
     const adjustPanel = document.getElementById('adjustments-panel');
     const adjustIcon = document.getElementById('adjust-icon');
-    toggleAdjust.addEventListener('click', () => {
-      adjustPanel.classList.toggle('hidden');
-      adjustIcon.textContent = adjustPanel.classList.contains('hidden') ? '▸' : '▾';
-    });
-
-    // --- Zoom Controls ---
-    function updateZoomLabel() {
-      zoomLabel.textContent = `${Math.round((currentScale / 8) * 100)}%`;
+    if (toggleAdjust && adjustPanel) {
+      toggleAdjust.addEventListener('click', () => {
+        adjustPanel.classList.toggle('hidden');
+        if (adjustIcon) {
+          adjustIcon.textContent = adjustPanel.classList.contains('hidden') ? '▸' : '▾';
+        }
+      });
     }
 
-    btnZoomIn.addEventListener('click', () => {
-      currentScale = Math.min(24, currentScale + 2);
-      updateZoomLabel();
-      renderDisplay();
-    });
+    // Zoom Controls
+    function updateZoomLabel() {
+      if (zoomLabel) {
+        zoomLabel.textContent = `${Math.round((currentScale / 8) * 100)}%`;
+      }
+    }
 
-    btnZoomOut.addEventListener('click', () => {
-      currentScale = Math.max(2, currentScale - 2);
-      updateZoomLabel();
-      renderDisplay();
-    });
+    if (btnZoomIn) {
+      btnZoomIn.addEventListener('click', () => {
+        currentScale = Math.min(24, currentScale + 2);
+        updateZoomLabel();
+        renderDisplay();
+      });
+    }
 
-    btnToggleGrid.addEventListener('click', () => {
-      showGrid = !showGrid;
-      btnToggleGrid.classList.toggle('bg-accentMint/20', showGrid);
-      btnToggleGrid.classList.toggle('border-accentMint', showGrid);
-      btnToggleGrid.classList.toggle('text-accentMint', showGrid);
-      renderDisplay();
-    });
+    if (btnZoomOut) {
+      btnZoomOut.addEventListener('click', () => {
+        currentScale = Math.max(2, currentScale - 2);
+        updateZoomLabel();
+        renderDisplay();
+      });
+    }
+
+    if (btnToggleGrid) {
+      btnToggleGrid.addEventListener('click', () => {
+        showGrid = !showGrid;
+        btnToggleGrid.classList.toggle('bg-accentMint/20', showGrid);
+        btnToggleGrid.classList.toggle('border-accentMint', showGrid);
+        btnToggleGrid.classList.toggle('text-accentMint', showGrid);
+        renderDisplay();
+      });
+    }
 
     // View Original Hold/Toggle
-    const startViewOrig = () => { isOriginalMode = true; renderDisplay(); };
-    const endViewOrig = () => { isOriginalMode = false; renderDisplay(); };
-    btnViewOriginal.addEventListener('mousedown', startViewOrig);
-    btnViewOriginal.addEventListener('mouseup', endViewOrig);
-    btnViewOriginal.addEventListener('mouseleave', endViewOrig);
-    btnViewOriginal.addEventListener('touchstart', (e) => { e.preventDefault(); startViewOrig(); });
-    btnViewOriginal.addEventListener('touchend', endViewOrig);
+    if (btnViewOriginal) {
+      const startViewOrig = () => { isOriginalMode = true; renderDisplay(); };
+      const endViewOrig = () => { isOriginalMode = false; renderDisplay(); };
+      btnViewOriginal.addEventListener('mousedown', startViewOrig);
+      btnViewOriginal.addEventListener('mouseup', endViewOrig);
+      btnViewOriginal.addEventListener('mouseleave', endViewOrig);
+      btnViewOriginal.addEventListener('touchstart', (e) => { e.preventDefault(); startViewOrig(); });
+      btnViewOriginal.addEventListener('touchend', endViewOrig);
+    }
 
-    // --- Interactive Drawing Tools on Canvas ---
+    // Interactive Drawing Tools on Canvas
     const toolBtns = {
       pencil: document.getElementById('tool-pencil'),
       eraser: document.getElementById('tool-eraser'),
@@ -288,14 +313,20 @@
 
     function setTool(toolName) {
       currentTool = toolName;
-      Object.keys(toolBtns).forEach(k => toolBtns[k].classList.remove('active', 'text-accentMint', 'bg-accentMint/20'));
-      toolBtns[toolName].classList.add('active', 'text-accentMint', 'bg-accentMint/20');
+      Object.keys(toolBtns).forEach(k => {
+        if (toolBtns[k]) {
+          toolBtns[k].classList.remove('active', 'text-accentMint', 'bg-accentMint/20');
+        }
+      });
+      if (toolBtns[toolName]) {
+        toolBtns[toolName].classList.add('active', 'text-accentMint', 'bg-accentMint/20');
+      }
     }
 
-    toolBtns.pencil.addEventListener('click', () => setTool('pencil'));
-    toolBtns.eraser.addEventListener('click', () => setTool('eraser'));
-    toolBtns.picker.addEventListener('click', () => setTool('picker'));
-    toolBtns.bucket.addEventListener('click', () => setTool('bucket'));
+    if (toolBtns.pencil) toolBtns.pencil.addEventListener('click', () => setTool('pencil'));
+    if (toolBtns.eraser) toolBtns.eraser.addEventListener('click', () => setTool('eraser'));
+    if (toolBtns.picker) toolBtns.picker.addEventListener('click', () => setTool('picker'));
+    if (toolBtns.bucket) toolBtns.bucket.addEventListener('click', () => setTool('bucket'));
 
     function getGridCoords(e) {
       const rect = canvas.getBoundingClientRect();
@@ -316,7 +347,7 @@
     function applyDrawingTool(e) {
       if (!engine.pixelData) return;
       const { x, y } = getGridCoords(e);
-      const activeColor = colorPicker.value;
+      const activeColor = colorPicker ? colorPicker.value : '#00f0ff';
 
       if (currentTool === 'pencil') {
         engine.setPixel(x, y, activeColor);
@@ -326,7 +357,7 @@
         renderDisplay();
       } else if (currentTool === 'picker') {
         const hex = engine.getPixel(x, y);
-        if (hex) colorPicker.value = hex;
+        if (hex && colorPicker) colorPicker.value = hex;
         setTool('pencil');
       } else if (currentTool === 'bucket') {
         engine.floodFill(x, y, activeColor);
@@ -334,16 +365,18 @@
       }
     }
 
-    canvas.addEventListener('mousedown', (e) => {
-      isDrawing = true;
-      applyDrawingTool(e);
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-      if (isDrawing && (currentTool === 'pencil' || currentTool === 'eraser')) {
+    if (canvas) {
+      canvas.addEventListener('mousedown', (e) => {
+        isDrawing = true;
         applyDrawingTool(e);
-      }
-    });
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (isDrawing && (currentTool === 'pencil' || currentTool === 'eraser')) {
+          applyDrawingTool(e);
+        }
+      });
+    }
 
     window.addEventListener('mouseup', () => {
       if (isDrawing) {
@@ -352,21 +385,25 @@
       }
     });
 
-    btnUndo.addEventListener('click', () => {
-      if (engine.undo()) {
-        renderDisplay();
-        showToast('Undo');
-      }
-    });
+    if (btnUndo) {
+      btnUndo.addEventListener('click', () => {
+        if (engine.undo()) {
+          renderDisplay();
+          showToast('Undo');
+        }
+      });
+    }
 
-    btnRedo.addEventListener('click', () => {
-      if (engine.redo()) {
-        renderDisplay();
-        showToast('Redo');
-      }
-    });
+    if (btnRedo) {
+      btnRedo.addEventListener('click', () => {
+        if (engine.redo()) {
+          renderDisplay();
+          showToast('Redo');
+        }
+      });
+    }
 
-    // --- Export Actions ---
+    // Export Actions
     function triggerDownload(content, filename, mimeType) {
       const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
@@ -379,83 +416,100 @@
       URL.revokeObjectURL(url);
     }
 
-    document.getElementById('btn-export-png').addEventListener('click', () => {
-      const dataUrl = engine.exportPNG(4);
-      if (!dataUrl) return;
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'pixelcraft_art_4x.png';
-      a.click();
-      showToast('Downloaded 4x Crisp PNG!');
-    });
+    const btnPng = document.getElementById('btn-export-png');
+    if (btnPng) {
+      btnPng.addEventListener('click', () => {
+        const dataUrl = engine.exportPNG(4);
+        if (!dataUrl) return;
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'pixelcraft_art_4x.png';
+        a.click();
+        showToast('Downloaded 4x Crisp PNG!');
+      });
+    }
 
-    document.getElementById('btn-export-svg').addEventListener('click', () => {
-      const svg = engine.exportSVG();
-      if (!svg) return;
-      triggerDownload(svg, 'pixelcraft_vector.svg', 'image/svg+xml');
-      showToast('Downloaded SVG Vector!');
-    });
+    const btnSvg = document.getElementById('btn-export-svg');
+    if (btnSvg) {
+      btnSvg.addEventListener('click', () => {
+        const svg = engine.exportSVG();
+        if (!svg) return;
+        triggerDownload(svg, 'pixelcraft_vector.svg', 'image/svg+xml');
+        showToast('Downloaded SVG Vector!');
+      });
+    }
 
-    document.getElementById('btn-export-mc').addEventListener('click', () => {
-      const mc = engine.exportMinecraftBlueprint();
-      if (!mc) return;
-      triggerDownload(mc, 'minecraft_pixelart_blueprint.txt', 'text/plain');
-      showToast('Downloaded Minecraft Blueprint!');
-    });
+    const btnMc = document.getElementById('btn-export-mc');
+    if (btnMc) {
+      btnMc.addEventListener('click', () => {
+        const mc = engine.exportMinecraftBlueprint();
+        if (!mc) return;
+        triggerDownload(mc, 'minecraft_pixelart_blueprint.txt', 'text/plain');
+        showToast('Downloaded Minecraft Blueprint!');
+      });
+    }
 
-    document.getElementById('btn-export-craft').addEventListener('click', () => {
-      const chart = engine.exportCraftChart();
-      if (!chart) return;
-      triggerDownload(chart, 'pixelcraft_bead_thread_chart.txt', 'text/plain');
-      showToast('Downloaded Craft Pattern Chart!');
-    });
+    const btnCraft = document.getElementById('btn-export-craft');
+    if (btnCraft) {
+      btnCraft.addEventListener('click', () => {
+        const chart = engine.exportCraftChart();
+        if (!chart) return;
+        triggerDownload(chart, 'pixelcraft_bead_thread_chart.txt', 'text/plain');
+        showToast('Downloaded Craft Pattern Chart!');
+      });
+    }
 
-    document.getElementById('btn-copy-clipboard').addEventListener('click', async () => {
-      const dataUrl = engine.exportPNG(2);
-      if (!dataUrl) return;
-      try {
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        showToast('Copied pixel art to clipboard!');
-      } catch (err) {
-        showToast('Clipboard copy not supported by browser.');
-      }
-    });
+    const btnCopy = document.getElementById('btn-copy-clipboard');
+    if (btnCopy) {
+      btnCopy.addEventListener('click', async () => {
+        const dataUrl = engine.exportPNG(2);
+        if (!dataUrl) return;
+        try {
+          const res = await fetch(dataUrl);
+          const blob = await res.blob();
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          showToast('Copied pixel art to clipboard!');
+        } catch (err) {
+          showToast('Clipboard copy not supported by browser.');
+        }
+      });
+    }
 
-    // --- Mode Switcher (Converter vs 3D Voxel Generator) ---
+    // Mode Switcher (Converter vs 3D Voxel Generator)
     const tabConverter = document.getElementById('tab-converter');
     const tabGenerator = document.getElementById('tab-generator');
     const viewConverter = document.getElementById('view-converter');
     const viewGenerator = document.getElementById('view-generator');
     let voxelApp3D = null;
 
-    tabConverter.addEventListener('click', () => {
-      tabConverter.classList.add('active');
-      tabConverter.classList.remove('text-gray-400');
-      tabGenerator.classList.remove('active');
-      tabGenerator.classList.add('text-gray-400');
-      viewConverter.classList.remove('hidden');
-      viewGenerator.classList.add('hidden');
-    });
+    if (tabConverter && tabGenerator) {
+      tabConverter.addEventListener('click', () => {
+        tabConverter.classList.add('active');
+        tabConverter.classList.remove('text-gray-400');
+        tabGenerator.classList.remove('active');
+        tabGenerator.classList.add('text-gray-400');
+        if (viewConverter) viewConverter.classList.remove('hidden');
+        if (viewGenerator) viewGenerator.classList.add('hidden');
+      });
 
-    tabGenerator.addEventListener('click', () => {
-      tabGenerator.classList.add('active');
-      tabGenerator.classList.remove('text-gray-400');
-      tabConverter.classList.remove('active');
-      tabConverter.classList.add('text-gray-400');
-      viewGenerator.classList.remove('hidden');
-      viewConverter.classList.add('hidden');
+      tabGenerator.addEventListener('click', () => {
+        tabGenerator.classList.add('active');
+        tabGenerator.classList.remove('text-gray-400');
+        tabConverter.classList.remove('active');
+        tabConverter.classList.add('text-gray-400');
+        if (viewGenerator) viewGenerator.classList.remove('hidden');
+        if (viewConverter) viewConverter.classList.add('hidden');
 
-      // Initialize 3D engine if not already running
-      if (!voxelApp3D && window.THREE && window.VoxelGenerator) {
-        init3DGenerator();
-      }
-    });
+        if (!voxelApp3D && window.THREE && window.VoxelGenerator) {
+          init3DGenerator();
+        }
+      });
+    }
 
-    // 3D Voxel Generator Logic
     function init3DGenerator() {
       const container3D = document.getElementById('canvas-container');
+      if (!container3D || !window.THREE || !window.VoxelGenerator) return;
+
       const vGenerator = new window.VoxelGenerator({ seed: 1337, palette: 'cyberpunk', resolution: 16 });
       let current3DArchetype = 'spaceship';
       let explodeFactor = 0;
@@ -541,7 +595,9 @@
         rebuild3D();
       }
 
-      document.getElementById('btn-3d-randomize').addEventListener('click', spinRandom);
+      const btnSpin = document.getElementById('btn-3d-randomize');
+      if (btnSpin) btnSpin.addEventListener('click', spinRandom);
+
       document.querySelectorAll('.v-archetype-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('.v-archetype-btn').forEach(b => b.classList.remove('active'));
@@ -551,19 +607,24 @@
         });
       });
 
-      document.getElementById('v-slider-explode').addEventListener('input', (e) => {
-        explodeFactor = parseFloat(e.target.value);
-        rebuild3D();
-      });
+      const sliderExplode = document.getElementById('v-slider-explode');
+      if (sliderExplode) {
+        sliderExplode.addEventListener('input', (e) => {
+          explodeFactor = parseFloat(e.target.value);
+          rebuild3D();
+        });
+      }
 
-      // Send 3D snapshot to 2D Converter
-      document.getElementById('btn-send-to-converter').addEventListener('click', () => {
-        renderer.render(scene, camera);
-        const snapshotUrl = renderer.domElement.toDataURL('image/png');
-        tabConverter.click();
-        loadImageSource(snapshotUrl);
-        showToast('3D Model sent to 2D Pixel Converter!');
-      });
+      const btnSend = document.getElementById('btn-send-to-converter');
+      if (btnSend) {
+        btnSend.addEventListener('click', () => {
+          renderer.render(scene, camera);
+          const snapshotUrl = renderer.domElement.toDataURL('image/png');
+          if (tabConverter) tabConverter.click();
+          loadImageSource(snapshotUrl);
+          showToast('3D Model sent to 2D Pixel Converter!');
+        });
+      }
 
       function animate3D() {
         requestAnimationFrame(animate3D);
@@ -576,7 +637,7 @@
       voxelApp3D = true;
     }
 
-    // Auto-load sample cat on initial open so page is vibrant immediately
+    // Auto-load sample cat on initial open so canvas is active immediately
     if (window.SamplePresets && window.SamplePresets.cat) {
       loadImageSource(window.SamplePresets.cat.getDataUrl());
     }

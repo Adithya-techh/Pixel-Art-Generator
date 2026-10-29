@@ -194,33 +194,26 @@
       this.maxHistory = 20;
     }
 
-    /**
-     * Load image from HTML Image, File, or Blob
-     */
     loadImage(imageElement) {
       this.sourceImage = imageElement;
       this.history = [];
       this.historyIndex = -1;
     }
 
-    /**
-     * Process source image into pixel art
-     */
     process(options = {}) {
       if (!this.sourceImage) return null;
 
       const blockSize = Math.max(2, options.blockSize || 12);
       const paletteId = options.paletteId || 'db16';
       const dither = options.dither || 'floyd-steinberg';
-      const brightness = (options.brightness || 0) * 2.55; // -100 to 100
-      const contrast = (options.contrast || 0) * 0.01;      // -100 to 100
-      const saturation = (options.saturation || 0) * 0.01;  // -100 to 100
+      const brightness = (options.brightness || 0) * 2.55;  // -50 to 50 -> -127 to 127
+      const contrastVal = (options.contrast || 0);          // -50 to 50
+      const saturation = (options.saturation || 0) * 0.02;  // -50 to 50 -> -1.0 to 1.0
 
       // Calculate low-resolution grid dimensions
       const origW = this.sourceImage.naturalWidth || this.sourceImage.width;
       const origH = this.sourceImage.naturalHeight || this.sourceImage.height;
 
-      // Downscale to pixel grid
       const gridW = Math.max(4, Math.floor(origW / blockSize));
       const gridH = Math.max(4, Math.floor(origH / blockSize));
       this.gridWidth = gridW;
@@ -237,37 +230,43 @@
       const imgData = downCtx.getImageData(0, 0, gridW, gridH);
       const data = imgData.data;
 
-      // 2. Apply Brightness, Contrast & Saturation pre-adjustments
-      const contrastFactor = (259 * (contrast * 128 + 128)) / (255 * (259 - contrast * 128));
+      // 2. Correct Contrast formula: when contrastVal = 0, contrastFactor = 1.0
+      const contrastFactor = contrastVal === 0 ? 1 : (259 * (contrastVal * 2.55 + 255)) / (255 * (259 - contrastVal * 2.55));
 
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] === 0) continue; // Skip transparent pixels
+      if (brightness !== 0 || contrastVal !== 0 || saturation !== 0) {
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] === 0) continue;
 
-        let r = data[i];
-        let g = data[i + 1];
-        let b = data[i + 2];
+          let r = data[i];
+          let g = data[i + 1];
+          let b = data[i + 2];
 
-        // Brightness
-        r += brightness;
-        g += brightness;
-        b += brightness;
+          // Brightness
+          if (brightness !== 0) {
+            r += brightness;
+            g += brightness;
+            b += brightness;
+          }
 
-        // Contrast
-        r = contrastFactor * (r - 128) + 128;
-        g = contrastFactor * (g - 128) + 128;
-        b = contrastFactor * (b - 128) + 128;
+          // Contrast
+          if (contrastVal !== 0) {
+            r = contrastFactor * (r - 128) + 128;
+            g = contrastFactor * (g - 128) + 128;
+            b = contrastFactor * (b - 128) + 128;
+          }
 
-        // Saturation
-        if (saturation !== 0) {
-          const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-          r = gray + (r - gray) * (1 + saturation);
-          g = gray + (g - gray) * (1 + saturation);
-          b = gray + (b - gray) * (1 + saturation);
+          // Saturation
+          if (saturation !== 0) {
+            const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+            r = gray + (r - gray) * (1 + saturation);
+            g = gray + (g - gray) * (1 + saturation);
+            b = gray + (b - gray) * (1 + saturation);
+          }
+
+          data[i] = Math.min(255, Math.max(0, r));
+          data[i + 1] = Math.min(255, Math.max(0, g));
+          data[i + 2] = Math.min(255, Math.max(0, b));
         }
-
-        data[i] = Math.min(255, Math.max(0, r));
-        data[i + 1] = Math.min(255, Math.max(0, g));
-        data[i + 2] = Math.min(255, Math.max(0, b));
       }
 
       // 3. Palette Reduction & Dithering
@@ -308,7 +307,6 @@
     }
 
     _applyFloydSteinberg(data, width, height, paletteColors) {
-      // Work on floating point copy for error diffusion
       const buffer = new Float32Array(width * height * 3);
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -325,7 +323,6 @@
           const idx = (y * width + x) * 4;
           const bIdx = (y * width + x) * 3;
 
-          // Transparent pixel
           if (data[idx + 3] < 32) {
             data[idx + 3] = 0;
             continue;
@@ -346,7 +343,6 @@
           const errG = oldG - match.g;
           const errB = oldB - match.b;
 
-          // Distribute error to neighboring pixels
           this._diffuseError(buffer, width, height, x + 1, y, errR, errG, errB, 7 / 16);
           this._diffuseError(buffer, width, height, x - 1, y + 1, errR, errG, errB, 3 / 16);
           this._diffuseError(buffer, width, height, x, y + 1, errR, errG, errB, 5 / 16);
@@ -364,7 +360,7 @@
     }
 
     _applyBayerDither(data, width, height, paletteColors, matrix, matrixSize, matrixDiv) {
-      const spread = 40; // Dither spread strength
+      const spread = 40;
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const idx = (y * width + x) * 4;
@@ -389,13 +385,11 @@
       }
     }
 
-    // --- Interactive Drawing & Touch-up Tools ---
     setPixel(x, y, colorHex) {
       if (x < 0 || x >= this.gridWidth || y < 0 || y >= this.gridHeight || !this.pixelData) return;
       const idx = (y * this.gridWidth + x) * 4;
 
       if (colorHex === null) {
-        // Eraser
         this.pixelData[idx + 3] = 0;
       } else {
         const clean = colorHex.replace('#', '');
@@ -451,10 +445,8 @@
       this._saveHistory();
     }
 
-    // --- Undo / Redo System ---
     _saveHistory() {
       if (!this.pixelData) return;
-      // Truncate any redo branch
       this.history = this.history.slice(0, this.historyIndex + 1);
       this.history.push(new Uint8ClampedArray(this.pixelData));
       if (this.history.length > this.maxHistory) {
@@ -481,7 +473,6 @@
       return false;
     }
 
-    // --- Rendering to Display Canvas with Zoom & Grid Lines ---
     renderToCanvas(displayCanvas, options = {}) {
       if (!this.pixelData || !displayCanvas) return;
 
@@ -495,7 +486,6 @@
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
 
-      // Create ImageData for crisp drawing
       const offCanvas = document.createElement('canvas');
       offCanvas.width = this.gridWidth;
       offCanvas.height = this.gridHeight;
@@ -504,10 +494,8 @@
       imgData.data.set(this.pixelData);
       offCtx.putImageData(imgData, 0, 0);
 
-      // Nearest-neighbor upscale
       ctx.drawImage(offCanvas, 0, 0, displayCanvas.width, displayCanvas.height);
 
-      // Optional Pixel Grid Lines overlay
       if (showGrid && scale >= 6) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
         ctx.lineWidth = 1;
@@ -529,11 +517,6 @@
       }
     }
 
-    // --- Exporters ---
-
-    /**
-     * Export High-Res PNG with nearest-neighbor crisp scaling
-     */
     exportPNG(upscale = 4) {
       if (!this.pixelData) return null;
       const canvas = document.createElement('canvas');
@@ -554,9 +537,6 @@
       return canvas.toDataURL('image/png');
     }
 
-    /**
-     * Export SVG Vector representation
-     */
     exportSVG() {
       if (!this.pixelData) return null;
       let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${this.gridWidth} ${this.gridHeight}" width="${this.gridWidth * 16}" height="${this.gridHeight * 16}" shape-rendering="crispEdges">\n`;
@@ -574,9 +554,6 @@
       return svg;
     }
 
-    /**
-     * Export Minecraft Block count blueprint (.txt)
-     */
     exportMinecraftBlueprint() {
       if (!this.pixelData) return null;
       const colorCounts = new Map();
@@ -605,9 +582,6 @@
       return txt;
     }
 
-    /**
-     * Export DMC & Perler Bead Craft Pattern Chart (.txt)
-     */
     exportCraftChart() {
       if (!this.pixelData) return null;
       const counts = new Map();
@@ -636,7 +610,6 @@
     }
   }
 
-  // Export classes and constants
   root.PixelEngine = PixelEngine;
   root.PALETTES = PALETTES;
 
